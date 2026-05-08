@@ -59,7 +59,7 @@
     "@types/sql.js": "^1.4.11",
     "@types/unzipper": "^0.10.10",
     "@types/ws": "^8.5.0",
-    "jest": "^30.4.0",
+    "jest": "^30.4.1",
     "ts-jest": "^29.1.0",
     "typescript": "^6.0.3"
   },
