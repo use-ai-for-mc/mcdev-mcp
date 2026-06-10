@@ -24,6 +24,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Visual Markers** — Outline entities or blocks for the user to spot (`mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow`)
 - **Item Texture Rendering** — Render an inventory slot, an item id, or a slot on another entity as PNG (`mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture`)
 - **Chat History** — Recent client-side chat messages (`mc_chat_history`)
+- **Session Control & Dev Loop** — Join/leave servers, relaunch the client, and run the full build → relaunch → rejoin loop in one call (`mc_join_server`, `mc_leave_server`, `mc_wait_until_in_world`, `mc_relaunch_client`, `mc_deploy_and_restart`; gated by `session_control_enabled` in the DebugBridge config)
 - **Slash Commands** — Execute in-game commands (`mc_run_command`, opt-in dev tool)
 - **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
 
@@ -267,7 +268,7 @@ Find classes that extend or implement a given class or interface.
 These tools require Minecraft to be running with the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod installed.
 
 ### `mc_connect`
-Connect to a running Minecraft instance. Other runtime tools auto-connect if needed. Pass `reset: true` to disconnect and clear state before reconnecting (useful when switching instances). If `port` is omitted, scans ports 9876-9885.
+Connect to a running Minecraft instance. Other runtime tools auto-connect if needed. Pass `reset: true` to disconnect and clear state before reconnecting (useful when switching instances). If `port` is omitted, scans ports 9876-9886.
 
 ```json
 {
@@ -452,6 +453,74 @@ Render an item carried by another entity. `slot` is `"mainhand"`, `"offhand"`, o
 {
   "entityId": 12345,
   "slot": "mainhand"
+}
+```
+
+### Session control & dev loop
+
+These five tools drive the rebuild → relaunch → rejoin loop without human interaction. The underlying bridge endpoints (`disconnect`, `joinServer`, `quit`) are **disabled by default**: set `"session_control_enabled": true` in `<minecraft>/config/debugbridge.json` and restart the client (the flag is read at startup). `mc_connect` reports whether the connected instance has it enabled, and the tools return exact instructions when it's off.
+
+> **Caution:** `mc_relaunch_client` and `mc_deploy_and_restart` quit the whole Minecraft client, and `mc_join_server` / `mc_leave_server` change which world the user is in — they tear down the current play session. For repeated automated test runs, prefer a local throwaway server over a live community server (nondeterministic world, other players, server rules).
+
+The orchestration tools are configured by env vars (each overridable per-call via args):
+
+| Env var | Meaning |
+|---|---|
+| `MCDEV_LAUNCH_COMMAND` | Shell command that launches the client, e.g. `prismlauncher --launch {instance}`. `{instance}` is substituted. |
+| `MCDEV_INSTANCE` | Launcher instance name substituted for `{instance}`. |
+| `MCDEV_DEPLOY_COMMAND` | Shell command that builds and deploys the mod (e.g. your repo's build-and-deploy script). |
+| `MCDEV_DEPLOY_CWD` | Optional working directory for the deploy command. |
+
+### `mc_join_server`
+Join a multiplayer server (disconnecting from the current world first if needed). The server resource pack is pre-accepted by default so the join doesn't stall on the confirmation prompt. By default polls every second until a game snapshot shows a player (joined) or a `DisconnectedScreen` appears (failed — its title is returned as the reason).
+
+```json
+{
+  "address": "localhost:25565",
+  "acceptResourcePacks": true,
+  "wait": true,
+  "timeoutSeconds": 60
+}
+```
+
+### `mc_leave_server`
+Leave the current world/server to the title screen. No-op if not in a world. Fire-and-acknowledge — the ack means the disconnect was queued on the game thread.
+
+```json
+{}
+```
+
+### `mc_wait_until_in_world`
+Poll until the player is in a world, a `DisconnectedScreen` appears, or the timeout elapses. Read-only (doesn't require session control); useful after `mc_join_server` with `wait: false` or after a relaunch.
+
+```json
+{
+  "timeoutSeconds": 60
+}
+```
+
+### `mc_relaunch_client`
+Quit the client via the bridge, wait for its port to close, run the launch command, then poll ports 9876-9886 until the relaunched instance's bridge answers — verifying the Minecraft version / game directory matches so a second running instance isn't mistaken for it. Returns a stage-by-stage progress log.
+
+```json
+{
+  "launchCommand": "prismlauncher --launch {instance}",
+  "instance": "1.21.11 dev",
+  "expectedVersion": "1.21.11",
+  "timeoutSeconds": 120
+}
+```
+
+### `mc_deploy_and_restart`
+The one-call dev loop: run the build+deploy command (fails fast with its output on a nonzero exit), relaunch the client, and — if `joinAddress` is given — rejoin a server and wait until in-world.
+
+```json
+{
+  "deployCommand": "./gradlew buildAndDeploy",
+  "joinAddress": "localhost:25565",
+  "deployTimeoutSeconds": 600,
+  "relaunchTimeoutSeconds": 120,
+  "joinTimeoutSeconds": 60
 }
 ```
 

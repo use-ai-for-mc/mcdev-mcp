@@ -115,7 +115,9 @@ export class BridgeSession {
     }
 
     private async connectWithScan(): Promise<SessionInfo> {
-        const portsToTry = Array.from({ length: 10 }, (_, i) => this.configuredPort + i);
+        // The bridge binds the first free port in 9876-9886 (with wraparound),
+        // so the scan covers 11 ports from the configured base.
+        const portsToTry = Array.from({ length: 11 }, (_, i) => this.configuredPort + i);
         let lastError: Error | null = null;
 
         for (const port of portsToTry) {
@@ -127,9 +129,25 @@ export class BridgeSession {
         }
 
         throw new Error(
-            `Could not connect to DebugBridge on ports ${this.configuredPort}-${this.configuredPort + 9}. ` +
+            `Could not connect to DebugBridge on ports ${this.configuredPort}-${this.configuredPort + 10}. ` +
             `Is Minecraft running with the mod? Last error: ${lastError?.message}`
         );
+    }
+
+    /**
+     * Connect to a specific port without pinning future auto-reconnects to it
+     * (unlike `connect(port)`, which disables auto-scan). Used by relaunch
+     * orchestration: the bridge may bind a different port within its range on
+     * the next relaunch, so the scan behaviour must survive.
+     */
+    async adoptPort(port: number): Promise<SessionInfo> {
+        this.disconnect();
+        const info = await this.connectToPort(port);
+        if (info.gameDir) {
+            this.expectedGameDir = info.gameDir;
+        }
+        this.lastSessionInfo = info;
+        return info;
     }
 
     private async connectToPort(targetPort: number): Promise<SessionInfo> {

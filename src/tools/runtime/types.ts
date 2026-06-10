@@ -1,6 +1,7 @@
 export interface BridgeRequest {
     id: string;
-    type: "execute" | "search" | "snapshot" | "screenshot" | "runCommand" | "status";
+    type: "execute" | "search" | "snapshot" | "screenshot" | "runCommand" | "status"
+        | "screenInspect" | "disconnect" | "joinServer" | "quit";
     payload: Record<string, unknown>;
 }
 
@@ -27,6 +28,13 @@ export interface SessionInfo {
     /** Absolute path to debug.log - use the Read tool to view it. */
     debugLog?: string;
     debugLogExists?: boolean;
+    /**
+     * Whether the bridge's session-control endpoints (disconnect / joinServer /
+     * quit) are enabled via `session_control_enabled` in
+     * `<gameDir>/config/debugbridge.json`. Absent on bridges that predate the
+     * feature; false is the bridge default.
+     */
+    sessionControlEnabled?: boolean;
 }
 
 export interface SearchResult {

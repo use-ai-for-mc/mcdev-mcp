@@ -10,6 +10,9 @@ function formatSessionInfo(info: Partial<SessionInfo>, port: number | null): str
     if (info.gameDir) lines.push(`Game dir: ${info.gameDir}`);
     if (info.latestLog) lines.push(`Log: ${info.latestLog}`);
     if (info.mappingStatus) lines.push(`Mappings: ${info.mappingStatus}`);
+    if (info.sessionControlEnabled !== undefined) {
+        lines.push(`Session control: ${info.sessionControlEnabled ? "enabled" : "disabled"}`);
+    }
     return lines.join("\n");
 }
 
@@ -19,14 +22,14 @@ export const mcConnectTool = {
 Optional - other runtime tools auto-connect if needed. Useful to specify a
 non-default port, reconnect to a different instance, or get session info.
 
-If port is not specified, scans ports ${DEFAULT_PORT}-${DEFAULT_PORT + 9} to find the mod.
+If port is not specified, scans ports ${DEFAULT_PORT}-${DEFAULT_PORT + 10} to find the mod.
 Use reset=true to disconnect and clear state before reconnecting.`,
     inputSchema: {
         type: "object" as const,
         properties: {
             port: {
                 type: "number",
-                description: `WebSocket port. Default: scan ${DEFAULT_PORT}-${DEFAULT_PORT + 9}`,
+                description: `WebSocket port. Default: scan ${DEFAULT_PORT}-${DEFAULT_PORT + 10}`,
             },
             reset: {
                 type: "boolean",
@@ -77,7 +80,7 @@ Use reset=true to disconnect and clear state before reconnecting.`,
             const refused = /ECONNREFUSED|Could not connect|timed out connecting/i.test(msg);
             const portsTried = args.port !== undefined
                 ? [args.port]
-                : Array.from({ length: 10 }, (_, i) => DEFAULT_PORT + i);
+                : Array.from({ length: 11 }, (_, i) => DEFAULT_PORT + i);
             const structured = {
                 connected: false,
                 action: refused ? "start_minecraft" : "investigate",

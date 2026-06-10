@@ -18,6 +18,11 @@ export { mcGetEntityItemTextureTool } from './get-entity-item-texture.js';
 export { mcGetItemTextureByIdTool } from './get-item-texture-by-id.js';
 export { mcChatHistoryTool } from './chat-history.js';
 export { mcScreenInspectTool } from './screen-inspect.js';
+export { mcJoinServerTool } from './join-server.js';
+export { mcLeaveServerTool } from './leave-server.js';
+export { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
+export { mcRelaunchClientTool } from './relaunch-client.js';
+export { mcDeployAndRestartTool } from './deploy-and-restart.js';
 
 import { mcConnectTool } from './connect.js';
 import { mcExecuteTool } from './execute.js';
@@ -39,6 +44,11 @@ import { mcGetEntityItemTextureTool } from './get-entity-item-texture.js';
 import { mcGetItemTextureByIdTool } from './get-item-texture-by-id.js';
 import { mcChatHistoryTool } from './chat-history.js';
 import { mcScreenInspectTool } from './screen-inspect.js';
+import { mcJoinServerTool } from './join-server.js';
+import { mcLeaveServerTool } from './leave-server.js';
+import { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
+import { mcRelaunchClientTool } from './relaunch-client.js';
+import { mcDeployAndRestartTool } from './deploy-and-restart.js';
 
 // Dev-only tools (default off). The bridge mirrors these gates with its own
 // BridgeConfig flags (runCommandEnabled), so even if
@@ -66,6 +76,17 @@ export const runtimeTools = [
     mcGetItemTextureByIdTool,
     mcChatHistoryTool,
     mcScreenInspectTool,
+    // Session-control tools — always registered, but the bridge gates the
+    // underlying endpoints behind session_control_enabled (default false) in
+    // <minecraft>/config/debugbridge.json. mc_wait_until_in_world is
+    // read-only; relaunch/deploy run user-configured shell commands and only
+    // do anything if MCDEV_LAUNCH_COMMAND / MCDEV_DEPLOY_COMMAND (or args)
+    // are provided.
+    mcJoinServerTool,
+    mcLeaveServerTool,
+    mcWaitUntilInWorldTool,
+    mcRelaunchClientTool,
+    mcDeployAndRestartTool,
     // Dev-only tools — default off; flip env on both sides to enable.
     ...(scriptLogsEnabled ? [mcScriptLogsTool] : []),
     ...(runCommandEnabled ? [mcRunCommandTool] : []),
