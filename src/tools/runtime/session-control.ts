@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import net from "net";
 import WebSocket from "ws";
 import { bridgeSession } from "./session.js";
@@ -6,14 +5,19 @@ import { SessionInfo } from "./types.js";
 
 /**
  * Shared plumbing for the session-control tools (mc_join_server,
- * mc_leave_server, mc_wait_until_in_world, mc_relaunch_client,
- * mc_deploy_and_restart).
+ * mc_leave_server, mc_quit_client, mc_wait_until_in_world,
+ * mc_wait_for_bridge).
  *
  * The bridge's disconnect/joinServer/quit endpoints are fire-and-acknowledge:
  * success=true means "queued on the game thread", not "completed". Everything
  * here exists to turn those acks into observable outcomes — polling snapshot /
  * screenInspect for join results, and probing the port range to find the
  * bridge again after a client relaunch.
+ *
+ * Deliberately *not* here: running the build/deploy or launching the client.
+ * Those are machine-specific shell concerns that the coding agent driving
+ * this server handles itself — see the `mcdev://guides/dev-loop` resource for
+ * the full build → deploy → relaunch → rejoin procedure.
  */
 
 /** The bridge binds the first free port in this inclusive range (wraparound). */
@@ -21,37 +25,13 @@ export const BRIDGE_PORT_START = 9876;
 export const BRIDGE_PORT_END = 9886;
 
 export const DEFAULT_JOIN_TIMEOUT_S = 60;
-export const DEFAULT_RELAUNCH_TIMEOUT_S = 120;
-export const DEFAULT_DEPLOY_TIMEOUT_S = 600;
+export const DEFAULT_QUIT_TIMEOUT_S = 30;
+export const DEFAULT_BRIDGE_WAIT_TIMEOUT_S = 120;
 
 const POLL_INTERVAL_MS = 1000;
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Timestamped stage-by-stage progress log. MCP tools can only respond once,
- * so multi-stage orchestration (quit → launch → wait for bridge) accumulates
- * its progress here and returns the whole transcript — on failure the caller
- * sees exactly which stage died and how long each one took.
- */
-export class StageLog {
-    private start = Date.now();
-    readonly lines: string[] = [];
-
-    add(msg: string): void {
-        const t = ((Date.now() - this.start) / 1000).toFixed(1);
-        this.lines.push(`[${t}s] ${msg}`);
-    }
-
-    text(): string {
-        return this.lines.join("\n");
-    }
-
-    elapsedMs(): number {
-        return Date.now() - this.start;
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +172,17 @@ export function isPortListening(port: number, timeoutMs = 800): Promise<boolean>
     });
 }
 
+/** Poll until nothing listens on the port (the client exited) or the timeout
+ *  elapses. Returns true when the port closed. */
+export async function waitForPortClosed(port: number, timeoutMs: number): Promise<boolean> {
+    const start = Date.now();
+    for (;;) {
+        if (!(await isPortListening(port))) return true;
+        if (Date.now() - start >= timeoutMs) return false;
+        await sleep(POLL_INTERVAL_MS);
+    }
+}
+
 /**
  * One-shot status query against a port with a fresh, short-lived WebSocket.
  * Doesn't touch the shared bridgeSession — used to identify *which* instance
@@ -276,12 +267,13 @@ export function instanceMatches(
  * Sweep the port range until a bridge matching `expected` answers a status
  * query, then return it (without connecting the shared session — callers
  * adopt the port themselves). Throws on timeout, listing any non-matching
- * instances seen so the failure is debuggable.
+ * instances seen so the failure is debuggable. `note` receives progress
+ * remarks (e.g. mismatched instances being skipped).
  */
 export async function waitForBridge(
     expected: { version?: string; gameDir?: string },
     timeoutMs: number,
-    log?: StageLog,
+    note?: (msg: string) => void,
 ): Promise<{ port: number; info: SessionInfo }> {
     const start = Date.now();
     const seenMismatches = new Map<number, string>();
@@ -300,7 +292,7 @@ export async function waitForBridge(
             const desc = `${info.version ?? "?"} (${info.gameDir ?? "unknown gameDir"})`;
             if (seenMismatches.get(port) !== desc) {
                 seenMismatches.set(port, desc);
-                log?.add(`waiting for bridge: port ${port} answered with a different instance: ${desc} — skipping`);
+                note?.(`port ${port} answered with a different instance: ${desc} — skipping`);
             }
         }
         await sleep(POLL_INTERVAL_MS);
@@ -313,256 +305,8 @@ export async function waitForBridge(
     throw new Error(
         `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for the bridge of ${expectedDesc} ` +
         `on ports ${BRIDGE_PORT_START}-${BRIDGE_PORT_END}.${seen} ` +
-        `Check the launcher actually started the instance (look at its window / logs).`,
+        `If you just launched the client, check the launcher window: it may be sitting on a ` +
+        `login prompt (the user must log in once in the launcher GUI), or the game may have ` +
+        `crashed — read <gameDir>/logs/latest.log.`,
     );
-}
-
-// ---------------------------------------------------------------------------
-// Command configuration + process helpers
-// ---------------------------------------------------------------------------
-
-export const LAUNCH_COMMAND_HELP =
-    "Pass `launchCommand` or set the MCDEV_LAUNCH_COMMAND env var, e.g. " +
-    "`prismlauncher --launch {instance}`. A literal `{instance}` is replaced " +
-    "with the `instance` arg / MCDEV_INSTANCE env var.";
-
-/** Resolve the client launch command from args/env, substituting {instance}. */
-export function resolveLaunchCommand(
-    args: { launchCommand?: string; instance?: string },
-    env: NodeJS.ProcessEnv = process.env,
-): string {
-    const template = args.launchCommand ?? env.MCDEV_LAUNCH_COMMAND;
-    if (!template) {
-        throw new Error(`No launch command configured. ${LAUNCH_COMMAND_HELP}`);
-    }
-    if (template.includes("{instance}")) {
-        const instance = args.instance ?? env.MCDEV_INSTANCE;
-        if (!instance) {
-            throw new Error(
-                "The launch command contains {instance} but no instance name is configured. " +
-                "Pass `instance` or set the MCDEV_INSTANCE env var.",
-            );
-        }
-        return template.replaceAll("{instance}", instance);
-    }
-    return template;
-}
-
-export function resolveDeployCommand(
-    args: { deployCommand?: string },
-    env: NodeJS.ProcessEnv = process.env,
-): string {
-    const command = args.deployCommand ?? env.MCDEV_DEPLOY_COMMAND;
-    if (!command) {
-        throw new Error(
-            "No deploy command configured. Pass `deployCommand` or set the " +
-            "MCDEV_DEPLOY_COMMAND env var (e.g. your repo's build-and-deploy script). " +
-            "Optional MCDEV_DEPLOY_CWD sets its working directory.",
-        );
-    }
-    return command;
-}
-
-/**
- * Start the launcher detached (shell command). Resolves once the process has
- * survived a short grace window or exited 0 (launchers commonly fork the game
- * and exit); rejects on spawn failure or an immediate nonzero exit, which is
- * the "command not found / bad instance name" fast path.
- */
-export function launchDetached(command: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, { shell: true, detached: true, stdio: "ignore" });
-        child.unref();
-        let settled = false;
-        const settle = (fn: () => void) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(grace);
-            fn();
-        };
-        child.once("error", (err) => settle(() =>
-            reject(new Error(`Failed to start launch command \`${command}\`: ${err.message}`))));
-        child.once("exit", (code) => {
-            if (code !== null && code !== 0) {
-                settle(() => reject(new Error(
-                    `Launch command \`${command}\` exited immediately with code ${code}. ` +
-                    `Check the command and instance name.`,
-                )));
-            } else {
-                settle(resolve);
-            }
-        });
-        const grace = setTimeout(() => settle(resolve), 1500);
-    });
-}
-
-const MAX_CAPTURED_OUTPUT = 200 * 1024;
-
-export interface ShellResult {
-    exitCode: number | null;
-    /** Combined stdout+stderr, capped at 200 KB (head dropped when over). */
-    output: string;
-    timedOut: boolean;
-}
-
-/** Run a foreground shell command (the deploy step), capturing combined output. */
-export function runShellCommand(
-    command: string,
-    opts: { cwd?: string; timeoutMs: number },
-): Promise<ShellResult> {
-    return new Promise((resolve) => {
-        const child = spawn(command, { shell: true, cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"] });
-        let output = "";
-        let timedOut = false;
-        const append = (chunk: Buffer) => {
-            output += chunk.toString();
-            if (output.length > MAX_CAPTURED_OUTPUT) {
-                output = output.slice(output.length - MAX_CAPTURED_OUTPUT);
-            }
-        };
-        child.stdout.on("data", append);
-        child.stderr.on("data", append);
-        const timer = setTimeout(() => {
-            timedOut = true;
-            child.kill("SIGTERM");
-            // Escalate if SIGTERM is ignored (gradle daemons can be stubborn).
-            setTimeout(() => child.kill("SIGKILL"), 5000).unref();
-        }, opts.timeoutMs);
-        child.once("error", (err) => {
-            clearTimeout(timer);
-            resolve({ exitCode: null, output: `${output}\n[spawn error] ${err.message}`, timedOut });
-        });
-        child.once("close", (code) => {
-            clearTimeout(timer);
-            resolve({ exitCode: code, output, timedOut });
-        });
-    });
-}
-
-export function tail(text: string, maxChars = 6000): string {
-    const trimmed = text.trimEnd();
-    if (trimmed.length <= maxChars) return trimmed;
-    return `…(output truncated)…\n${trimmed.slice(trimmed.length - maxChars)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Relaunch orchestration (shared by mc_relaunch_client and mc_deploy_and_restart)
-// ---------------------------------------------------------------------------
-
-export interface RelaunchOptions {
-    launchCommand?: string;
-    instance?: string;
-    /** MC version the relaunched instance must report (e.g. "1.21.11").
-     *  Defaults to the version of the instance we quit. */
-    expectedVersion?: string;
-    timeoutMs: number;
-}
-
-/**
- * The full quit → wait-for-shutdown → launch → wait-for-bridge loop.
- * Stage-by-stage progress goes into `log`; throws (with the log already
- * populated) on any stage failure. On success the shared bridgeSession is
- * connected to the relaunched instance.
- */
-export async function performRelaunch(
-    opts: RelaunchOptions,
-    log: StageLog,
-): Promise<{ port: number; info: SessionInfo }> {
-    const deadline = Date.now() + opts.timeoutMs;
-    const remaining = () => deadline - Date.now();
-
-    // Resolve config up front so a missing launch command fails before we
-    // tear anything down.
-    const launchCommand = resolveLaunchCommand(opts);
-
-    // Identify the current instance (version/gameDir/port) so we can verify
-    // we reconnect to the *same* one after the relaunch.
-    let previous: SessionInfo | null = null;
-    let previousPort: number | null = null;
-    try {
-        previous = bridgeSession.isConnected
-            ? bridgeSession.getSessionInfo()
-            : await bridgeSession.connect();
-        previousPort = bridgeSession.getConnectedPort();
-        log.add(`connected to Minecraft ${previous?.version ?? "?"} on port ${previousPort}`);
-    } catch {
-        log.add("no running client found on any bridge port — skipping quit, going straight to launch");
-    }
-
-    // With multiple instances running, the auto-scan may have attached to the
-    // wrong one. Refuse to quit an instance whose version contradicts an
-    // explicit expectedVersion — that would tear down the user's *other* session.
-    if (previous?.version && opts.expectedVersion && previous.version !== opts.expectedVersion) {
-        throw new Error(
-            `Connected instance reports Minecraft ${previous.version}, but expectedVersion is ` +
-            `${opts.expectedVersion}. Refusing to quit a different instance — use mc_connect ` +
-            `(with the right port) to attach to the instance you want to relaunch first.`,
-        );
-    }
-
-    const expected = {
-        version: opts.expectedVersion ?? previous?.version,
-        gameDir: previous?.gameDir,
-    };
-
-    if (previous) {
-        if (previous.sessionControlEnabled === false) {
-            throw new Error(sessionControlDisabledMessage(previous.gameDir));
-        }
-
-        // Quit. Fire-and-acknowledge; the socket dropping right after (or
-        // even instead of) the ack is the expected success mode.
-        log.add("quitting: sending quit to the bridge");
-        try {
-            const resp = await bridgeSession.send("quit", {});
-            if (!resp.success) {
-                // Self-describing bridge error (e.g. session control gated) — pass through.
-                throw new Error(resp.error ?? "quit failed with no error message");
-            }
-            log.add("quitting: acknowledged, waiting for the client to exit");
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            if (/connection closed/i.test(msg)) {
-                log.add("quitting: socket dropped before the ack — client is shutting down");
-            } else {
-                throw e;
-            }
-        }
-        bridgeSession.disconnect();
-
-        if (previousPort !== null) {
-            const shutdownDeadline = Math.min(30_000, Math.max(remaining(), 0));
-            const start = Date.now();
-            let closed = false;
-            while (Date.now() - start < shutdownDeadline) {
-                if (!(await isPortListening(previousPort))) { closed = true; break; }
-                await sleep(POLL_INTERVAL_MS);
-            }
-            if (!closed) {
-                throw new Error(
-                    `Client did not shut down: port ${previousPort} is still listening after ` +
-                    `${Math.round(shutdownDeadline / 1000)}s. The game may be stuck on a save/exit ` +
-                    `prompt — please close it manually, then re-run.`,
-                );
-            }
-            log.add(`quitting: port ${previousPort} closed — client is down`);
-        }
-    }
-
-    if (remaining() <= 0) {
-        throw new Error("Relaunch timeout exhausted before the launch stage. Increase timeoutSeconds.");
-    }
-
-    log.add(`launching: ${launchCommand}`);
-    await launchDetached(launchCommand);
-    log.add("launching: launcher started, waiting for the bridge to come up");
-
-    const found = await waitForBridge(expected, Math.max(remaining(), 0), log);
-    log.add(`bridge answered on port ${found.port}: Minecraft ${found.info.version}`);
-
-    // Adopt (rather than connect(port)) so future auto-reconnects keep
-    // scanning — the port can move again on the next relaunch.
-    const info = await bridgeSession.adoptPort(found.port);
-    log.add("reconnected to the relaunched client");
-    return { port: found.port, info };
 }

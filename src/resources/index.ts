@@ -25,6 +25,20 @@ export const resources: McdevResource[] = [
     mimeType: 'text/markdown',
     relPath: 'resources/python-scripting.md',
   },
+  {
+    uri: 'mcdev://guides/dev-loop',
+    name: 'dev-loop',
+    title: 'The mod dev loop: build → deploy → relaunch → rejoin',
+    description:
+      'How a coding agent runs the full mod test loop without human ' +
+      'interaction: discover the launcher and instance from the bridge\'s ' +
+      'gameDir, deploy the jar, quit via mc_quit_client, launch detached ' +
+      'from the shell, reconnect with mc_wait_for_bridge, and rejoin a ' +
+      'server. Read this before restarting the Minecraft client or ' +
+      'automating mod testing.',
+    mimeType: 'text/markdown',
+    relPath: 'resources/dev-loop.md',
+  },
 ];
 
 function packageRoot(): string {
@@ -55,4 +69,10 @@ export const SERVER_INSTRUCTIONS = [
   '`mcdev://guides/python-scripting`. It documents the wire protocol, a minimal',
   'asyncio client, and the pitfalls — saves you reverse‑engineering the bridge',
   'from the tool implementations.',
+  '',
+  'When asked to test mod changes in the running game — rebuild, redeploy,',
+  'restart the Minecraft client, rejoin a server — first read the resource',
+  '`mcdev://guides/dev-loop`. It covers discovering the launcher/instance from',
+  'the bridge\'s gameDir, deploying the jar, and driving mc_quit_client /',
+  'mc_wait_for_bridge / mc_join_server, plus the failure playbook.',
 ].join('\n');

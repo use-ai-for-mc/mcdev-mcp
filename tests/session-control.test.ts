@@ -2,10 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
     classifyInWorldPoll,
     instanceMatches,
-    resolveLaunchCommand,
-    resolveDeployCommand,
     sessionControlDisabledMessage,
-    tail,
 } from '../src/tools/runtime/session-control.js';
 import type { SessionInfo } from '../src/tools/runtime/types.js';
 
@@ -63,44 +60,6 @@ describe('instanceMatches', () => {
     });
 });
 
-describe('resolveLaunchCommand', () => {
-    it('substitutes {instance} from args', () => {
-        expect(resolveLaunchCommand({ launchCommand: 'prismlauncher --launch {instance}', instance: 'dev 1.21' }, {}))
-            .toBe('prismlauncher --launch dev 1.21');
-    });
-
-    it('reads command and instance from env when args are absent', () => {
-        const env = { MCDEV_LAUNCH_COMMAND: 'prismlauncher --launch "{instance}"', MCDEV_INSTANCE: 'main' };
-        expect(resolveLaunchCommand({}, env)).toBe('prismlauncher --launch "main"');
-    });
-
-    it('args take precedence over env', () => {
-        const env = { MCDEV_LAUNCH_COMMAND: 'wrong', MCDEV_INSTANCE: 'wrong' };
-        expect(resolveLaunchCommand({ launchCommand: 'minecraft-launcher' }, env)).toBe('minecraft-launcher');
-    });
-
-    it('passes a command without the placeholder through unchanged', () => {
-        expect(resolveLaunchCommand({ launchCommand: './start.sh' }, {})).toBe('./start.sh');
-    });
-
-    it('throws a config-pointing error when no command is set', () => {
-        expect(() => resolveLaunchCommand({}, {})).toThrow(/MCDEV_LAUNCH_COMMAND/);
-    });
-
-    it('throws when {instance} is used but no instance is configured', () => {
-        expect(() => resolveLaunchCommand({ launchCommand: 'x --launch {instance}' }, {}))
-            .toThrow(/MCDEV_INSTANCE/);
-    });
-});
-
-describe('resolveDeployCommand', () => {
-    it('prefers the arg, falls back to env, and errors with config help', () => {
-        expect(resolveDeployCommand({ deployCommand: './deploy.sh' }, { MCDEV_DEPLOY_COMMAND: 'env' })).toBe('./deploy.sh');
-        expect(resolveDeployCommand({}, { MCDEV_DEPLOY_COMMAND: './deploy.sh' })).toBe('./deploy.sh');
-        expect(() => resolveDeployCommand({}, {})).toThrow(/MCDEV_DEPLOY_COMMAND/);
-    });
-});
-
 describe('sessionControlDisabledMessage', () => {
     it('points at the concrete config file when gameDir is known', () => {
         const msg = sessionControlDisabledMessage('/home/u/.minecraft');
@@ -111,17 +70,5 @@ describe('sessionControlDisabledMessage', () => {
 
     it('uses a placeholder path when gameDir is unknown', () => {
         expect(sessionControlDisabledMessage(undefined)).toContain('<minecraft>/config/debugbridge.json');
-    });
-});
-
-describe('tail', () => {
-    it('returns short text unchanged', () => {
-        expect(tail('hello', 100)).toBe('hello');
-    });
-
-    it('keeps the end of long text and marks the truncation', () => {
-        const t = tail('a'.repeat(50) + 'THE-END', 10);
-        expect(t).toContain('truncated');
-        expect(t.endsWith('THE-END')).toBe(true);
     });
 });

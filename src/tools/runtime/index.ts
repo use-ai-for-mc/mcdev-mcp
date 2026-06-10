@@ -21,8 +21,8 @@ export { mcScreenInspectTool } from './screen-inspect.js';
 export { mcJoinServerTool } from './join-server.js';
 export { mcLeaveServerTool } from './leave-server.js';
 export { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
-export { mcRelaunchClientTool } from './relaunch-client.js';
-export { mcDeployAndRestartTool } from './deploy-and-restart.js';
+export { mcQuitClientTool } from './quit-client.js';
+export { mcWaitForBridgeTool } from './wait-for-bridge.js';
 
 import { mcConnectTool } from './connect.js';
 import { mcExecuteTool } from './execute.js';
@@ -47,8 +47,8 @@ import { mcScreenInspectTool } from './screen-inspect.js';
 import { mcJoinServerTool } from './join-server.js';
 import { mcLeaveServerTool } from './leave-server.js';
 import { mcWaitUntilInWorldTool } from './wait-until-in-world.js';
-import { mcRelaunchClientTool } from './relaunch-client.js';
-import { mcDeployAndRestartTool } from './deploy-and-restart.js';
+import { mcQuitClientTool } from './quit-client.js';
+import { mcWaitForBridgeTool } from './wait-for-bridge.js';
 
 // Dev-only tools (default off). The bridge mirrors these gates with its own
 // BridgeConfig flags (runCommandEnabled), so even if
@@ -77,16 +77,16 @@ export const runtimeTools = [
     mcChatHistoryTool,
     mcScreenInspectTool,
     // Session-control tools — always registered, but the bridge gates the
-    // underlying endpoints behind session_control_enabled (default false) in
-    // <minecraft>/config/debugbridge.json. mc_wait_until_in_world is
-    // read-only; relaunch/deploy run user-configured shell commands and only
-    // do anything if MCDEV_LAUNCH_COMMAND / MCDEV_DEPLOY_COMMAND (or args)
-    // are provided.
+    // mutating endpoints (joinServer/disconnect/quit) behind
+    // session_control_enabled (default false) in
+    // <minecraft>/config/debugbridge.json. The two wait_* tools are read-only.
+    // Build/deploy/launch orchestration deliberately lives outside this
+    // server, in the agent driving it — see resources/dev-loop.md.
     mcJoinServerTool,
     mcLeaveServerTool,
     mcWaitUntilInWorldTool,
-    mcRelaunchClientTool,
-    mcDeployAndRestartTool,
+    mcQuitClientTool,
+    mcWaitForBridgeTool,
     // Dev-only tools — default off; flip env on both sides to enable.
     ...(scriptLogsEnabled ? [mcScriptLogsTool] : []),
     ...(runCommandEnabled ? [mcRunCommandTool] : []),

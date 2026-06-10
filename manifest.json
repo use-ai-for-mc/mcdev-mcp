@@ -76,6 +76,11 @@
     { "name": "mc_get_item_texture", "description": "Render the item in inventory slot N as a PNG" },
     { "name": "mc_get_item_texture_by_id", "description": "Render the default texture for a registry id (e.g. minecraft:diamond) as a PNG" },
     { "name": "mc_get_entity_item_texture", "description": "Render an item carried by another entity (mainhand, offhand, armor slot) as a PNG" },
+    { "name": "mc_join_server", "description": "Join a multiplayer server and wait until in-world (requires bridge-side session_control_enabled)" },
+    { "name": "mc_leave_server", "description": "Leave the current world/server to the title screen (requires bridge-side session_control_enabled)" },
+    { "name": "mc_wait_until_in_world", "description": "Poll until the player is in a world or the join visibly failed" },
+    { "name": "mc_quit_client", "description": "Gracefully shut down the Minecraft client and wait for it to exit (requires bridge-side session_control_enabled)" },
+    { "name": "mc_wait_for_bridge", "description": "Wait for a relaunched client's DebugBridge to answer on ports 9876-9886, then reconnect" },
     { "name": "mc_run_command", "description": "Execute a Minecraft slash command (opt-in dev tool, requires MCDEV_RUN_COMMAND=1 and bridge-side opt-in)" },
     { "name": "mc_script_logs", "description": "Review past mc_execute runs and error patterns (opt-in via the 'Log script executions' user setting)" }
   ],

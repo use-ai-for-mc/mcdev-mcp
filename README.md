@@ -24,7 +24,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Visual Markers** — Outline entities or blocks for the user to spot (`mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow`)
 - **Item Texture Rendering** — Render an inventory slot, an item id, or a slot on another entity as PNG (`mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture`)
 - **Chat History** — Recent client-side chat messages (`mc_chat_history`)
-- **Session Control & Dev Loop** — Join/leave servers, relaunch the client, and run the full build → relaunch → rejoin loop in one call (`mc_join_server`, `mc_leave_server`, `mc_wait_until_in_world`, `mc_relaunch_client`, `mc_deploy_and_restart`; gated by `session_control_enabled` in the DebugBridge config)
+- **Session Control & Dev Loop** — Join/leave servers, quit the client, and reconnect after a relaunch (`mc_join_server`, `mc_leave_server`, `mc_quit_client`, `mc_wait_for_bridge`, `mc_wait_until_in_world`; gated by `session_control_enabled` in the DebugBridge config). Build/launch orchestration is the coding agent's job, guided by the `mcdev://guides/dev-loop` resource and the `minecraft-dev-loop` skill.
 - **Slash Commands** — Execute in-game commands (`mc_run_command`, opt-in dev tool)
 - **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
 
@@ -458,18 +458,11 @@ Render an item carried by another entity. `slot` is `"mainhand"`, `"offhand"`, o
 
 ### Session control & dev loop
 
-These five tools drive the rebuild → relaunch → rejoin loop without human interaction. The underlying bridge endpoints (`disconnect`, `joinServer`, `quit`) are **disabled by default**: set `"session_control_enabled": true` in `<minecraft>/config/debugbridge.json` and restart the client (the flag is read at startup). `mc_connect` reports whether the connected instance has it enabled, and the tools return exact instructions when it's off.
+These five tools are the bridge-side primitives of the rebuild → relaunch → rejoin loop. The underlying endpoints (`disconnect`, `joinServer`, `quit`) are **disabled by default**: set `"session_control_enabled": true` in `<minecraft>/config/debugbridge.json` and restart the client (the flag is read at startup). `mc_connect` reports whether the connected instance has it enabled, and the tools return exact instructions when it's off.
 
-> **Caution:** `mc_relaunch_client` and `mc_deploy_and_restart` quit the whole Minecraft client, and `mc_join_server` / `mc_leave_server` change which world the user is in — they tear down the current play session. For repeated automated test runs, prefer a local throwaway server over a live community server (nondeterministic world, other players, server rules).
+The machine-specific halves of the loop — building the mod, copying the jar into `<gameDir>/mods/`, and launching the client — are deliberately **not** server tools: a coding agent with shell access discovers and runs them itself, guided by the [`mcdev://guides/dev-loop` resource](resources/dev-loop.md) (also available as a copyable Claude Code skill in [`skills/minecraft-dev-loop/`](skills/minecraft-dev-loop/SKILL.md)). The short version: the agent derives the deploy target, instance name, and launcher from the `gameDir` that `mc_connect` reports, persists the launch command it composes in the project's CLAUDE.md, and leaves authentication entirely to the launcher.
 
-The orchestration tools are configured by env vars (each overridable per-call via args):
-
-| Env var | Meaning |
-|---|---|
-| `MCDEV_LAUNCH_COMMAND` | Shell command that launches the client, e.g. `prismlauncher --launch {instance}`. `{instance}` is substituted. |
-| `MCDEV_INSTANCE` | Launcher instance name substituted for `{instance}`. |
-| `MCDEV_DEPLOY_COMMAND` | Shell command that builds and deploys the mod (e.g. your repo's build-and-deploy script). |
-| `MCDEV_DEPLOY_CWD` | Optional working directory for the deploy command. |
+> **Caution:** `mc_quit_client` shuts down the whole Minecraft client, and `mc_join_server` / `mc_leave_server` change which world the user is in — they tear down the current play session. For repeated automated test runs, prefer a local throwaway server over a live community server (nondeterministic world, other players, server rules).
 
 ### `mc_join_server`
 Join a multiplayer server (disconnecting from the current world first if needed). The server resource pack is pre-accepted by default so the join doesn't stall on the confirmation prompt. By default polls every second until a game snapshot shows a player (joined) or a `DisconnectedScreen` appears (failed — its title is returned as the reason).
@@ -499,28 +492,23 @@ Poll until the player is in a world, a `DisconnectedScreen` appears, or the time
 }
 ```
 
-### `mc_relaunch_client`
-Quit the client via the bridge, wait for its port to close, run the launch command, then poll ports 9876-9886 until the relaunched instance's bridge answers — verifying the Minecraft version / game directory matches so a second running instance isn't mistaken for it. Returns a stage-by-stage progress log.
+### `mc_quit_client`
+Gracefully shut down the Minecraft client (the WebSocket dropping right after the ack is the normal success mode). By default polls until the bridge port stops listening, so success means the process is actually gone and it's safe to relaunch.
 
 ```json
 {
-  "launchCommand": "prismlauncher --launch {instance}",
-  "instance": "1.21.11 dev",
-  "expectedVersion": "1.21.11",
-  "timeoutSeconds": 120
+  "waitForExit": true,
+  "timeoutSeconds": 30
 }
 ```
 
-### `mc_deploy_and_restart`
-The one-call dev loop: run the build+deploy command (fails fast with its output on a nonzero exit), relaunch the client, and — if `joinAddress` is given — rejoin a server and wait until in-world.
+### `mc_wait_for_bridge`
+Block until a freshly (re)launched client's bridge answers, then connect to it. Sweeps ports 9876-9886 once per second, only accepting the instance that matches the previous connection's game directory / version — so a second running instance isn't mistaken for the relaunch. Pass `expectedVersion` only when deliberately switching instances. Read-only.
 
 ```json
 {
-  "deployCommand": "./gradlew buildAndDeploy",
-  "joinAddress": "localhost:25565",
-  "deployTimeoutSeconds": 600,
-  "relaunchTimeoutSeconds": 120,
-  "joinTimeoutSeconds": 60
+  "expectedVersion": "1.21.11",
+  "timeoutSeconds": 120
 }
 ```
 
