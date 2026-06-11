@@ -17,7 +17,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Call Graph Analysis** — Find method callers and callees across the entire codebase
 
 ### Runtime Interaction (requires [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod)
-- **Live Lua Execution** — Execute Lua scripts inside the running Minecraft JVM (`mc_execute`)
+- **Live Groovy Execution** — Execute Groovy scripts inside the running Minecraft JVM (`mc_execute`); migrated from Lua in mid-2026
 - **Game State Snapshots** — Player position, health, dimension, time, weather (`mc_snapshot`)
 - **Screenshots, Recordings & Screen Inspection** — Game-window JPEG, multi-frame contact sheet for temporal debug, and current-GUI structure (`mc_screenshot`, `mc_record_video`, `mc_screen_inspect`)
 - **World Introspection** — Nearby entities and block-entities, plus per-id details (`mc_nearby_entities`, `mc_entity_details`, `mc_nearby_blocks`, `mc_block_details`, `mc_looked_at_entity`)
@@ -29,7 +29,7 @@ An **MCP (Model Context Protocol) server** that empowers AI coding agents to wor
 - **Script Execution Logs** — Review past `mc_execute` runs and error patterns (`mc_script_logs`, opt-in via Claude Desktop user setting)
 
 ### MCP Resources
-- **`mcdev://guides/python-scripting`** — Wire-protocol reference for AI agents that want to drive DebugBridge from Python directly (bypassing the MCP tools): WebSocket framing, a minimal asyncio client, and the Lua surface you send through it. Surfaced via the standard MCP `resources/list` + `resources/read`, with a pointer in the server's `instructions` so agents know to look.
+- **`mcdev://guides/python-scripting`** — Wire-protocol reference for AI agents that want to drive DebugBridge from Python directly (bypassing the MCP tools): WebSocket framing, a minimal asyncio client, and the Groovy surface you send through it. Surfaced via the standard MCP `resources/list` + `resources/read`, with a pointer in the server's `instructions` so agents know to look.
 
 ## Quick Start
 
@@ -278,12 +278,13 @@ Connect to a running Minecraft instance. Other runtime tools auto-connect if nee
 ```
 
 ### `mc_execute`
-Execute Lua code in the running game. The Lua environment persists across calls.
+Execute Groovy code in the running game. The binding persists across calls,
+and `mc` / `player` / `level` are pre-bound. (The runtime migrated from Lua
+to Apache Groovy 5 in mid-2026 — the tool description carries a Lua→Groovy
+cheat-sheet.)
 
-```lua
-local mc = java.import("net.minecraft.client.Minecraft"):getInstance()
-local player = mc.player
-return player:blockPosition():toShortString()
+```groovy
+return player.blockPosition().toShortString()
 ```
 
 ### `mc_snapshot`

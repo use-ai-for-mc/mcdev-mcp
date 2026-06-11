@@ -20,7 +20,7 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 │   │  src/tools/static/        │    │ src/tools/runtime/         │   │
 │   │  ┌─────────────────────┐  │    │  ┌──────────────────────┐  │   │
 │   │  │ mc_version          │  │    │  │ mc_connect           │  │   │
-│   │  │ mc_search           │  │    │  │ mc_execute (Lua)     │  │   │
+│   │  │ mc_search           │  │    │  │ mc_execute (Groovy)  │  │   │
 │   │  │ mc_get_class/method │  │    │  │ mc_snapshot          │  │   │
 │   │  │ mc_list_classes/pkg │  │    │  │ mc_screenshot        │  │   │
 │   │  │ mc_find_hierarchy   │  │    │  │ mc_screen_inspect    │  │   │

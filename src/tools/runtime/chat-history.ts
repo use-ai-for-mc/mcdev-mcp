@@ -6,8 +6,8 @@ export const mcChatHistoryTool = {
     description: `Get the most recent client-side chat messages — what the user has
 seen in the chat overlay, including system messages and command output.
 
-Prefer this over walking gui:getChat().allMessages from Lua (which costs
-one bridge round-trip per field on each message). Returns {plain, addedTime}
+Prefer this over walking mc.gui.getChat().allMessages from Groovy (which
+costs one bridge round-trip per field on each message). Returns {plain, addedTime}
 per message, newest-first. Set includeJson=true to also receive each message
 as a structured Component (preserves colors, styles, click events, hover
 events) — handy for parsing colored command output.`,

@@ -11,7 +11,7 @@ const DEFAULT_PORT = (() => {
 // Hard ceiling on the total wait time for a single bridge request. The user can
 // pass a per-call `timeoutMs` (used by mc_execute), but we still cap it so a
 // runaway value can't pin a request open for hours. 5 minutes is well past any
-// reasonable Lua script.
+// reasonable Groovy script.
 const MAX_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 export class BridgeSession {
@@ -254,7 +254,7 @@ export class BridgeSession {
                 this.pendingRequests.delete(id);
                 reject(new Error(
                     `Request timed out after ${deadlineMs}ms${cappedNote}. ` +
-                    `The game may be frozen or the Lua script may be in an infinite loop.`
+                    `The game may be frozen or the script may be in an infinite loop.`
                 ));
             }, deadlineMs);
 

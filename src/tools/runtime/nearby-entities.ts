@@ -7,8 +7,9 @@ Returns id, type (Mojang class name), position, distance, and a
 primaryEquipment summary (held item / framed item / displayed item) where
 applicable.
 
-Prefer this over iterating entities via mc_execute — the per-call Java<->Lua
-bridge cost makes hand-rolled loops time out at ~100 entities. Use
+Prefer this over iterating entities via mc_execute — no script round-trip,
+and the summary shape is already curated. (If you do script it, batch the
+loop in sync { } .) Use
 mc_entity_details to drill into a specific entity by id.
 
 Set includeIcons=true to also receive a top-level icons map keyed by itemId

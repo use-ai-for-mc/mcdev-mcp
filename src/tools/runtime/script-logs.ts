@@ -3,7 +3,7 @@ import { scriptLogger } from "./script-logger.js";
 export const mcScriptLogsTool = {
     name: "mc_script_logs",
     description: `View script execution logs and error statistics. Useful for debugging common
-Lua scripting issues and identifying patterns in failed scripts.
+Groovy scripting issues and identifying patterns in failed scripts.
 
 Modes:
 - "errors": Show recent error entries (default, last 20)
@@ -52,7 +52,7 @@ Use the Read tool to view these files. Format: JSON Lines (one JSON object per l
                 text += `## ${stat.error}\n`;
                 text += `   Count: ${stat.count} | Last seen: ${stat.lastSeen}\n`;
                 text += `   Example script:\n`;
-                text += `   \`\`\`lua\n   ${stat.examples[0].split('\n').join('\n   ')}\n   \`\`\`\n\n`;
+                text += `   \`\`\`groovy\n   ${stat.examples[0].split('\n').join('\n   ')}\n   \`\`\`\n\n`;
             }
 
             if (stats.length > 15) {
@@ -75,7 +75,7 @@ Use the Read tool to view these files. Format: JSON Lines (one JSON object per l
             text += `---\n`;
             text += `**${entry.timestamp}** (${entry.duration_ms}ms)\n`;
             text += `Error: ${entry.error}\n`;
-            text += `\`\`\`lua\n${entry.code}\n\`\`\`\n\n`;
+            text += `\`\`\`groovy\n${entry.code}\n\`\`\`\n\n`;
         }
 
         return { content: [{ type: "text" as const, text }] };

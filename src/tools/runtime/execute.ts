@@ -6,9 +6,9 @@ const scriptLogsEnabled = isEnvOn('MCDEV_SCRIPT_LOGS');
 
 export const mcExecuteTool = {
     name: "mc_execute",
-    description: `Execute Lua code in the Minecraft session. The Lua environment is persistent - variables and functions defined in earlier calls remain available.
+    description: `Execute GROOVY code in the Minecraft session (the runtime migrated from Lua to Apache Groovy 5 in mid-2026 — see the migration note at the end if you knew the old surface). The binding is persistent: undeclared assignments (x = 5) survive to later calls; def x is script-local.
 
-PREFER NATIVE TOOLS WHERE POSSIBLE — they're 10x+ faster and don't time out:
+PREFER NATIVE TOOLS WHERE POSSIBLE — they're faster and avoid script overhead:
 - Player state (x/y/z/yaw/pitch/look/velocity/vehicle/raycast target/world): mc_snapshot
 - Nearby entities or one entity's details: mc_nearby_entities / mc_entity_details
 - Nearby block entities (signs, chests, etc.): mc_nearby_blocks / mc_block_details
@@ -16,30 +16,28 @@ PREFER NATIVE TOOLS WHERE POSSIBLE — they're 10x+ faster and don't time out:
 - Recent chat: mc_chat_history
 - Item textures: mc_get_item_texture (by slot or by id)
 Reach for mc_execute when you need to explore the Java API or do something
-the native tools don't cover. Iterating ~100+ entities or slots in Lua will
-time out (per-call Java<->Lua bridge cost).
+the native tools don't cover.
 
-timeoutMs: optional per-call deadline in ms (default 10000, max 300000 = 5 min).
-Bump it for bulk reflection over many entities/slots or heavy file I/O. A native
-tool (mc_nearby_entities, mc_entity_details, mc_screen_inspect, etc.) is almost
-always faster than just raising the timeout — try those first.
+Pre-bound globals: mc (Minecraft instance), player, level — plus the "java" helper.
 
-File I/O is allowed: Lua's io.* is in scope (e.g. io.open(path, "w"):write(json):close()),
-and java.import("java.io.*") / java.import("java.nio.file.*") work too — useful for
-dumping JSON/CSV/screenshots to disk.
+Mojang names everywhere, on every Minecraft version: obj.foo reads a field
+(JavaBean getter fallback), obj.foo(args) calls a method. Overloads resolve by
+argument types; decimal literals coerce to double/float params.
 
-Wall clock / env: os is NOT available. Use java.import("java.lang.System"):currentTimeMillis()
-(or :nanoTime()) for timing, and System:getenv(name) / System:getProperty(name) for env vars.
+Minecraft classes can't be named directly on obfuscated builds — load them via
+java.type: def Vec3 = java.type('net.minecraft.world.phys.Vec3'); construct with
+Vec3(1, 2, 3) or Vec3.create(1, 2, 3). (Single-quote class names: double-quoted
+GStrings interpolate the $ in inner-class names.)
 
-The "java" global table provides:
-- java.import(className) - import a Minecraft class by Mojang name
-- java.new(class, args...) - create an instance
-- java.typeof(obj) - get the Mojang class name
-- java.cast(obj, className) - view object as a different type
-- java.iter(iterable) - iterate over Java collections (works on JPMS-private types like HashMap.keySet())
-- java.array(collection) - convert to a Lua table
+The "java" helper provides:
+- java.type(className) - class handle for statics + construction, by Mojang name
+- java.list(x) - Java collection/array -> Groovy List (use for iteration)
+- java.typeName(obj) - the Mojang class name
 - java.isNull(obj) - null check
-- java.ref(refId) - retrieve a stored object reference
+- java.ref(refId) - retrieve a stored object reference ($ref_N from results)
+- sync { ... } - run the closure ON THE GAME THREAD in one hop. Use it to batch
+  bulk loops (hundreds of entities/slots run in milliseconds instead of one
+  thread-hop per call): sync { java.list(level.entitiesForRendering()).collect { java.typeName(it) } }
 
 Reflection helpers for exploring API:
 - java.describe(obj) - full dump: class, fields, methods, supers
@@ -48,15 +46,34 @@ Reflection helpers for exploring API:
 - java.supers(obj) - class hierarchy and interfaces
 - java.find(pattern, [scope]) - search mappings for classes/methods/fields
 
-Java objects support field access (obj.fieldName) and method calls (obj:methodName(args)).
-All names use Mojang-mapped names, regardless of Minecraft version.
-Use "return <value>" to get a value back. Use print() for debug output.`,
+Plain JDK classes work natively (System.currentTimeMillis(), new File(path).text = "...").
+Sandbox: Runtime / ProcessBuilder / java.net.* are blocked; file I/O is allowed.
+Caveat: bridge-wrapped Minecraft objects don't auto-unwrap when passed to NATIVE
+Java calls like new File(wrappedFile, name) — pass strings/primitives or unwrap
+with wrapped.getTarget(). Bridge-dispatched calls (anything on mc/player/level or
+a java.type class) unwrap arguments automatically.
+
+Use "return <value>" to get a value back; println/print output is captured.
+Returned Minecraft objects serialize as {className, ref, toString, fields} —
+resume them later with java.ref(ref).
+
+timeoutMs: optional per-call deadline in ms (default 10000, max 300000 = 5 min).
+Bump it for bulk reflection or heavy file I/O — but prefer sync{} batching or a
+native tool over raising the timeout.
+
+MIGRATING FROM THE OLD LUA SURFACE (pre-2026-06): obj:method(args) -> obj.method(args);
+java.import(name) -> java.type(name); java.new(Cls, args) -> Cls(args) or
+Cls.create(args); java.iter/java.array -> java.list; java.typeof -> java.typeName;
+java.cast - removed (dispatch walks the runtime hierarchy, no cast needed);
+io.open(...) -> new File(...); os.time() -> System.currentTimeMillis();
+print(x) -> println x; pcall -> try/catch; local x -> def x;
+{a = 1} tables -> [a: 1] maps and [1, 2, 3] lists.`,
     inputSchema: {
         type: "object" as const,
         properties: {
             code: {
                 type: "string",
-                description: "Lua code to execute",
+                description: "Groovy code to execute",
             },
             timeoutMs: {
                 type: "integer",
@@ -74,7 +91,7 @@ Use "return <value>" to get a value back. Use print() for debug output.`,
             // `timeoutMs` is intentionally passed to two different layers:
             //   * payload `{ code, timeoutMs }` — bounds the script's own
             //     execution inside the Minecraft JVM (the bridge mod uses
-            //     this to interrupt runaway Lua).
+            //     this to interrupt runaway scripts).
             //   * 3rd-arg `timeoutMs` — bounds the WebSocket request from
             //     this side (BridgeSession adds a +5s grace and then a
             //     5-minute ceiling, see session.ts).

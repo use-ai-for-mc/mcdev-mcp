@@ -8,8 +8,8 @@ export const mcScreenInspectTool = {
 
 For container screens (chests, anvils, brewing stands, etc.) also returns
 {menuClass, slots: [{idx, container, item:{itemId, count, damage, maxDamage,
-name}}]} in a single native pass — avoids the per-call Java<->Lua bridge
-cost that times out when iterating slots from Lua.
+name}}]} in a single native pass — cheaper than iterating slots from a script
+(one bridge call instead of per-slot traffic).
 
 Set includeIcons=true to also receive a top-level icons map keyed by itemId
 ({base64Png, width, height, spriteName}) — lets you see every item in the

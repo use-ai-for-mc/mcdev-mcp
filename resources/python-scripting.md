@@ -13,17 +13,20 @@ script the user will run later, integration into a non‑MCP harness, etc.
 
 There is no Python runtime inside Minecraft. The MCP server, the Python client,
 and any other client all talk to the same thing: the **DebugBridge mod**
-(`github.com/weikengchen/debugbridge`) running inside the Minecraft JVM. It
-exposes a small WebSocket protocol and evaluates **Lua** on the game side.
+(`github.com/use-ai-for-mc/debugbridge`) running inside the Minecraft JVM. It
+exposes a small WebSocket protocol and evaluates **Groovy** on the game side
+(the runtime migrated from Lua to Apache Groovy 5 in mid-2026 — adjust any
+older snippets you may have seen; a migration cheat-sheet is at the end of
+"What Groovy you can send" below).
 
 So a Python "script that calls the Minecraft backend" is really:
 
 ```
-Python  ──ws──►  DebugBridge mod (inside Minecraft JVM)  ──►  Lua eval  ──►  Java API
+Python  ──ws──►  DebugBridge mod (inside Minecraft JVM)  ──►  Groovy eval  ──►  Java API
 ```
 
 Your Python code is the transport. The interesting work is still expressed in
-Lua snippets sent through the `execute` request type.
+Groovy snippets sent through the `execute` request type.
 
 ## Wire protocol
 
@@ -44,7 +47,8 @@ anything below looks stale.
 ```json
 {
   "id":   "req_1",
-  "type": "execute" | "snapshot" | "screenshot" | "search" | "runCommand" | "status",
+  "type": "execute" | "snapshot" | "screenshot" | "search" | "runCommand" | "status"
+          | "disconnect" | "joinServer" | "quit" | ...,
   "payload": { ... }
 }
 ```
@@ -54,14 +58,27 @@ Notes per type:
 | `type`       | `payload`                                                                  | Returns in `result` |
 |--------------|----------------------------------------------------------------------------|---------------------|
 | `status`     | `{}`                                                                       | `SessionInfo` (version, mappingStatus, gameDir, logsDir, latestLog, …) |
-| `execute`    | `{ "code": "<lua>", "timeoutMs"?: <int 1000-300000> }`                      | Whatever the Lua `return`s; `output` carries `print()` lines |
+| `execute`    | `{ "code": "<groovy>", "timeoutMs"?: <int 1000-300000> }`                      | Whatever the Groovy `return`s; `output` carries `println` lines |
 | `snapshot`   | `{}` (player/world snapshot — see `mc_snapshot`)                            | snapshot JSON |
 | `screenshot` | `{}` (returns base64 JPEG)                                                  | image payload |
 | `search`     | `{ "pattern": "<str>" }`                                                    | mapping search results |
-| `runCommand` | `{ "command": "/give @s diamond" }` — gated by `runCommandEnabled` on the mod | command result |
+| `runCommand` | `{ "command": "/give @s diamond" }` — gated by `run_command_enabled` on the mod | command result |
+| `disconnect` | `{}` — leave the current world/server (lands on the title screen)            | ack only |
+| `joinServer` | `{ "address": "host[:port]", "acceptResourcePacks"?: bool (default true) }`  | ack `{status: "connecting"}` |
+| `quit`       | `{}` — close the Minecraft client (the bridge dies with it)                  | ack only |
+
+The table is not exhaustive — the mod also serves the native inspection types
+the MCP tools use (`screenInspect`, `chatHistory`, `nearbyEntities`,
+`entityDetails`, `nearbyBlocks`, `record_video`, …); see `BridgeServer.handleRequest`
+in the DebugBridge repo for the full switch.
 
 `runCommand` is opt-in on the mod side; expect `success: false` with an
-`error` mentioning the flag if it is disabled.
+`error` mentioning the flag if it is disabled. The three session-control types
+are likewise gated by `session_control_enabled` in `debugbridge.json` (`status`
+reports the capability as `sessionControlEnabled`). They are fire-and-acknowledge:
+poll `snapshot` (player present = in world) and `screenInspect` for the outcome.
+Relaunching a closed client is necessarily external (e.g.
+`prismlauncher --launch <instance>`), then re-scan the port range.
 
 ### Response
 
@@ -70,7 +87,7 @@ Notes per type:
   "id":      "req_1",
   "success": true,
   "result":  ...,         // arbitrary JSON; absent on errors
-  "output":  "...",       // optional, Lua print() captures
+  "output":  "...",       // optional, println/print captures
   "error":   "..."        // only when success is false
 }
 ```
@@ -81,7 +98,7 @@ on — that's what the TypeScript client does.
 
 ### Timeouts
 
-`timeoutMs` on an `execute` payload bounds Lua execution **inside** the JVM.
+`timeoutMs` on an `execute` payload bounds script execution **inside** the JVM.
 You should also enforce a wall‑clock timeout on the WebSocket round‑trip on the
 Python side (the TS client adds a +5s grace and a 5‑minute ceiling). Without
 both, a frozen game can hang your script indefinitely.
@@ -159,12 +176,12 @@ class DebugBridge:
             raise BridgeError(resp.get("error") or "unknown bridge error")
         return resp
 
-    async def execute(self, lua: str, timeout_ms: int = 10_000):
-        # The bridge bounds Lua inside the JVM; we still set a slightly larger
-        # wall-clock timeout on this side so a frozen JVM can't hang us.
+    async def execute(self, groovy: str, timeout_ms: int = 10_000):
+        # The bridge bounds the script inside the JVM; we still set a slightly
+        # larger wall-clock timeout on this side so a frozen JVM can't hang us.
         resp = await self.send(
             "execute",
-            {"code": lua, "timeoutMs": timeout_ms},
+            {"code": groovy, "timeoutMs": timeout_ms},
             timeout=(timeout_ms / 1000) + 5,
         )
         return resp.get("result"), resp.get("output", "")
@@ -181,12 +198,10 @@ async def main():
     print("session:", info["result"])
 
     result, output = await bridge.execute("""
-        local mc = java.import("net.minecraft.client.Minecraft"):getInstance()
-        local p  = mc:player()
-        return { name = p:getName():getString(), y = p:getY() }
+        return [name: player.getName().getString(), y: player.getY()]
     """)
-    print("lua return:", result)
-    if output: print("lua print:", output)
+    print("groovy return:", result)
+    if output: print("groovy println:", output)
 
     await bridge.close()
 
@@ -200,42 +215,63 @@ session‑info verification across reconnects, etc.) lift the patterns from
 [`src/tools/runtime/session.ts`](../src/tools/runtime/session.ts) — it has all
 been thought through there.
 
-## What Lua you can send
+## What Groovy you can send
 
-The Lua environment exposed by the bridge is documented in the
+The Groovy environment exposed by the bridge is documented in the
 `mc_execute` tool description in
 [`src/tools/runtime/execute.ts`](../src/tools/runtime/execute.ts). Highlights:
 
-- `java.import("net.minecraft.client.Minecraft"):getInstance()` — your entry point.
-- `java.new(cls, ...)`, `java.typeof(obj)`, `java.cast(obj, "name")`,
-  `java.iter(coll)`, `java.array(coll)`, `java.isNull(obj)`, `java.ref(id)`.
+- `mc`, `player`, `level` are pre-bound; the binding persists across calls
+  (`x = 5` survives, `def x` is script-local).
+- Field access is `obj.fieldName` (JavaBean getter fallback); method calls are
+  `obj.methodName(args)`. All names are **Mojang-mapped** regardless of
+  Minecraft version; overloads resolve by argument types.
+- Minecraft classes load via `java.type('net.minecraft.world.phys.Vec3')`
+  (single-quote the name — `$` in inner-class names breaks GStrings);
+  construct with `Vec3(1, 2, 3)` or `Vec3.create(1, 2, 3)`.
+- `java.list(coll)` (iteration), `java.typeName(obj)`, `java.isNull(obj)`,
+  `java.ref(id)` (resume a `$ref_N` from an earlier result).
 - Reflection: `java.describe(obj)`, `java.methods(obj, filter?)`,
   `java.fields(obj, filter?)`, `java.supers(obj)`, `java.find(pattern, scope?)`.
-- Field access is `obj.fieldName`; method calls are `obj:methodName(args)`.
-- All names are **Mojang‑mapped** regardless of Minecraft version.
-- `io.*` works for file I/O on the game machine. `os` is **not** available;
-  use `java.import("java.lang.System"):currentTimeMillis()` for time and
-  `:getenv(name)` / `:getProperty(name)` for env.
-- Return values must be JSON‑serializable. Convert Java collections via
-  `java.array(...)` before returning them.
+- `sync { ... }` runs the closure on the game thread in one hop — wrap bulk
+  loops in it (hundreds of entities in milliseconds instead of one
+  thread-hop per wrapper call).
+- Plain JDK classes work natively: `System.currentTimeMillis()`,
+  `System.getenv(name)`, `new File(path).text = "..."` for file I/O.
+  `Runtime`/`ProcessBuilder`/`java.net.*` are sandboxed off.
+- Bridge-wrapped Minecraft objects don't auto-unwrap when passed to *native*
+  Java calls (e.g. `new File(wrappedFile, name)` fails) — pass strings or
+  unwrap with `wrapped.getTarget()`. Calls dispatched through `mc`/`player`/
+  `level`/`java.type` classes unwrap arguments automatically.
+- Return values serialize to JSON; Groovy lists/maps become arrays/objects,
+  other Java objects become `{className, ref, toString, fields}`.
+
+Migrating snippets from the pre-2026-06 **Lua** surface: `obj:method(args)` →
+`obj.method(args)`; `java.import(name)` → `java.type(name)`;
+`java.new(Cls, args)` → `Cls(args)`; `java.iter`/`java.array` → `java.list`;
+`java.typeof` → `java.typeName`; `java.cast` → removed (dispatch walks the
+runtime hierarchy); `io.open(...)` → `new File(...)`; `os.time()` →
+`System.currentTimeMillis()`; `print(x)` → `println x`; `pcall` → try/catch;
+`local x` → `def x`; `{a = 1}` → `[a: 1]`.
 
 ## Pitfalls
 
-1. **Iterating hundreds of entities or slots in Lua is slow.** The Lua↔Java
-   bridge cost adds up per call. If you find yourself doing this from Python,
-   write the loop in Lua and `return` a flat table — one round trip, not N.
+1. **Batch bulk loops in `sync { ... }`.** Outside it, every wrapper call hops
+   to the game thread individually. And never loop from Python — write the
+   loop in Groovy and `return` a flat list — one round trip, not N.
 2. **The bridge only binds to loopback.** A remote Python client cannot reach
    it without an SSH tunnel.
 3. **Connection drops on world reload.** Some Minecraft state changes close
    and reopen the WebSocket. Production scripts need reconnect logic. Use the
    `status` reply's `gameDir` to detect "different game instance now" — see
    `expectedGameDir` in `session.ts`.
-4. **`runCommand` is dev‑only.** Both this MCP server (`MCDEV_RUN_COMMAND=1`)
-   and the mod (`runCommandEnabled` in `BridgeConfig`) have to opt in. A
-   Python client cannot enable it remotely.
+4. **`runCommand` and session control are dev-only.** `runCommand` needs both
+   this MCP server (`MCDEV_RUN_COMMAND=1`) and the mod (`run_command_enabled`)
+   to opt in; `disconnect`/`joinServer`/`quit` need `session_control_enabled`
+   on the mod. A Python client cannot enable either remotely.
 5. **There is no streaming response.** A long script either completes within
    `timeoutMs` and returns one JSON blob, or it dies. If you need progress,
-   have the Lua snippet append to a file and tail that file from Python.
+   have the Groovy snippet append to a file and tail that file from Python.
 
 ## When NOT to write a Python client
 

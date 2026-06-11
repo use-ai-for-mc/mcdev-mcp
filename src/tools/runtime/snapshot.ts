@@ -5,7 +5,7 @@ export const mcSnapshotTool = {
     name: "mc_snapshot",
     description: `Get a structured snapshot of the current game state. Returns player
 position, health, food, dimension, game mode, time of day, weather, etc.
-No Lua needed - quick overview of current state.`,
+No scripting needed - quick overview of current state.`,
     inputSchema: {
         type: "object" as const,
         properties: {},

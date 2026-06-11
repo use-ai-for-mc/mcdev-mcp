@@ -20,7 +20,7 @@ export const resources: McdevResource[] = [
     description:
       'How to drive a live Minecraft instance from Python by speaking the ' +
       'DebugBridge WebSocket protocol directly — wire format, a minimal ' +
-      'asyncio client, and the Lua surface you send through it. Read this ' +
+      'asyncio client, and the Groovy surface you send through it. Read this ' +
       'before writing a Python script that bypasses the mcdev-mcp tools.',
     mimeType: 'text/markdown',
     relPath: 'resources/python-scripting.md',
