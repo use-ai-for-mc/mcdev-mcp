@@ -2,6 +2,7 @@ import { bridgeSession } from "./session.js";
 import { safeStringify } from "./validate-resp.js";
 import {
     checkSessionControlEnabled,
+    classifyInWorldPoll,
     waitUntilInWorld,
     DEFAULT_JOIN_TIMEOUT_S,
 } from "./session-control.js";
@@ -16,8 +17,10 @@ stall on the confirmation prompt.
 
 By default this also polls until the player is actually in-world (the bridge
 ack only means "queued"): success when a game snapshot shows a player, failure
-when a DisconnectedScreen appears (its title is returned as the reason). Set
-wait=false to just fire the join and return.
+when a DisconnectedScreen appears (its title is returned as the reason). When
+called from inside a world, the poll first waits for the old session to drop
+so a stale snapshot of it can't masquerade as the new join. Set wait=false to
+just fire the join and return.
 
 For repeated automated test runs, prefer a local throwaway server over a live
 community server — live servers have nondeterministic worlds, other players,
@@ -59,6 +62,23 @@ Requires session_control_enabled=true in the DebugBridge config.`,
                 return { content: [{ type: "text" as const, text: disabled }], isError: true };
             }
 
+            // Probe BEFORE sending the join: if we're currently in a world, the
+            // outcome poll must see the old session drop before a player
+            // snapshot counts as "joined" — the ack only means the
+            // disconnect+connect got queued, so early polls still show the old
+            // world's player. Unknown state gates nothing — same as joining
+            // from the title screen.
+            let requireAbsenceFirst = false;
+            if (args.wait !== false) {
+                try {
+                    const pre = await bridgeSession.send("snapshot", {});
+                    if (pre.success) {
+                        requireAbsenceFirst =
+                            classifyInWorldPoll(pre.result, null).state === "joined";
+                    }
+                } catch { /* can't tell — don't gate */ }
+            }
+
             const resp = await bridgeSession.send("joinServer", {
                 address: args.address,
                 acceptResourcePacks: args.acceptResourcePacks ?? true,
@@ -79,7 +99,7 @@ Requires session_control_enabled=true in the DebugBridge config.`,
             }
 
             const timeoutMs = (args.timeoutSeconds ?? DEFAULT_JOIN_TIMEOUT_S) * 1000;
-            const outcome = await waitUntilInWorld(timeoutMs);
+            const outcome = await waitUntilInWorld(timeoutMs, requireAbsenceFirst);
             switch (outcome.state) {
                 case "joined":
                     return {

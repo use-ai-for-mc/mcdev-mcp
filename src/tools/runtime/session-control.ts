@@ -112,15 +112,61 @@ export interface WaitUntilInWorldResult {
     elapsedSeconds: number;
 }
 
+/** Mutable cross-tick state for {@link stepInWorldWait}. */
+export interface InWorldWaitProgress {
+    /** True once a successful snapshot showed no player — i.e. the pre-join
+     *  session has actually ended. */
+    sawAbsence: boolean;
+}
+
+/**
+ * One polling tick of the in-world wait, as a pure step over
+ * {@link classifyInWorldPoll} so the stale-snapshot gating is unit-testable.
+ *
+ * The bridge's joinServer ack only means the disconnect+connect got *queued*
+ * on the game thread — when the caller was already in a world, the first
+ * polls can still see the OLD world's player and would report "joined" for a
+ * connection that never happened. With `requireAbsenceFirst`, a
+ * player-bearing snapshot only counts as joined after at least one successful
+ * snapshot WITHOUT a player (the old session dropping).
+ *
+ * "failed" is never gated: a world can't display a DisconnectedScreen, so any
+ * one seen after the ack is fresh. Transient nulls (the snapshot request
+ * itself failed) are evidence of nothing and never count as absence.
+ */
+export function stepInWorldWait(
+    progress: InWorldWaitProgress,
+    requireAbsenceFirst: boolean,
+    snapshotResult: unknown,
+    screenResult: unknown,
+): InWorldPollState {
+    const cls = classifyInWorldPoll(snapshotResult, screenResult);
+    if (snapshotResult !== null && typeof snapshotResult === "object" && cls.state !== "joined") {
+        progress.sawAbsence = true;
+    }
+    if (cls.state === "joined" && requireAbsenceFirst && !progress.sawAbsence) {
+        return { state: "pending" };
+    }
+    return cls;
+}
+
 /**
  * Poll snapshot + screenInspect every second until the player is in a world,
  * a DisconnectedScreen appears, or the timeout elapses. Transient bridge
  * errors (e.g. a request timing out while the client is busy loading chunks)
  * are swallowed and polling continues — only the deadline ends the loop.
+ *
+ * Pass `requireAbsenceFirst` when the join was issued from inside a world —
+ * see {@link stepInWorldWait} for why a bare player snapshot can't be
+ * trusted until the old session has visibly dropped.
  */
-export async function waitUntilInWorld(timeoutMs: number): Promise<WaitUntilInWorldResult> {
+export async function waitUntilInWorld(
+    timeoutMs: number,
+    requireAbsenceFirst = false,
+): Promise<WaitUntilInWorldResult> {
     const start = Date.now();
     const elapsedSeconds = () => Math.round((Date.now() - start) / 100) / 10;
+    const progress: InWorldWaitProgress = { sawAbsence: false };
 
     for (;;) {
         let snapshotResult: unknown = null;
@@ -129,7 +175,7 @@ export async function waitUntilInWorld(timeoutMs: number): Promise<WaitUntilInWo
             if (snap.success) snapshotResult = snap.result;
         } catch { /* transient — keep polling */ }
 
-        if (classifyInWorldPoll(snapshotResult, null).state === "joined") {
+        if (stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, null).state === "joined") {
             return { state: "joined", elapsedSeconds: elapsedSeconds() };
         }
 
@@ -139,7 +185,7 @@ export async function waitUntilInWorld(timeoutMs: number): Promise<WaitUntilInWo
             if (scr.success) screenResult = scr.result;
         } catch { /* transient — keep polling */ }
 
-        const cls = classifyInWorldPoll(snapshotResult, screenResult);
+        const cls = stepInWorldWait(progress, requireAbsenceFirst, snapshotResult, screenResult);
         if (cls.state === "failed") {
             return { state: "failed", reason: cls.reason, elapsedSeconds: elapsedSeconds() };
         }

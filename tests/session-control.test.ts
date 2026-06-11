@@ -3,6 +3,8 @@ import {
     classifyInWorldPoll,
     instanceMatches,
     sessionControlDisabledMessage,
+    stepInWorldWait,
+    type InWorldWaitProgress,
 } from '../src/tools/runtime/session-control.js';
 import type { SessionInfo } from '../src/tools/runtime/types.js';
 
@@ -70,5 +72,41 @@ describe('sessionControlDisabledMessage', () => {
 
     it('uses a placeholder path when gameDir is unknown', () => {
         expect(sessionControlDisabledMessage(undefined)).toContain('<minecraft>/config/debugbridge.json');
+    });
+});
+
+describe('stepInWorldWait', () => {
+    const inWorld = { player: { x: 0, y: 64, z: 0 } };
+    const noWorld = { world: { dayTime: 0 } }; // successful snapshot, no player
+    const fresh = (): InWorldWaitProgress => ({ sawAbsence: false });
+
+    it('gates a stale player snapshot until the old session visibly drops', () => {
+        // Regression: joining server B while on server A reported "joined"
+        // off A's still-present player before the queued disconnect ran.
+        const progress = fresh();
+        expect(stepInWorldWait(progress, true, inWorld, null)).toEqual({ state: 'pending' });
+        expect(stepInWorldWait(progress, true, inWorld, null)).toEqual({ state: 'pending' });
+        expect(stepInWorldWait(progress, true, noWorld, null)).toEqual({ state: 'pending' });
+        expect(progress.sawAbsence).toBe(true);
+        expect(stepInWorldWait(progress, true, inWorld, null)).toEqual({ state: 'joined' });
+    });
+
+    it('reports joined immediately when absence is not required (title-screen join)', () => {
+        expect(stepInWorldWait(fresh(), false, inWorld, null)).toEqual({ state: 'joined' });
+    });
+
+    it('never gates a failure: a DisconnectedScreen after the ack is always fresh', () => {
+        const progress = fresh();
+        const screen = { type: 'DisconnectedScreen', title: 'Connection refused' };
+        expect(stepInWorldWait(progress, true, noWorld, screen))
+            .toEqual({ state: 'failed', reason: 'Connection refused' });
+    });
+
+    it('does not count a transient snapshot failure as absence', () => {
+        const progress = fresh();
+        expect(stepInWorldWait(progress, true, null, null)).toEqual({ state: 'pending' });
+        expect(progress.sawAbsence).toBe(false);
+        // ...so a following stale player snapshot still doesn't count as joined.
+        expect(stepInWorldWait(progress, true, inWorld, null)).toEqual({ state: 'pending' });
     });
 });
