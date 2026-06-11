@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "mcdev-mcp",
   "display_name": "Minecraft Dev MCP",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "MCP server for Minecraft mod development - decompiled code access, symbol search, and runtime interaction via DebugBridge",
   "long_description": "An MCP server for AI-assisted Minecraft mod development. Static tools provide access to decompiled Minecraft source code: browse classes and methods, search symbols, explore package hierarchies, find subclasses/implementors, and trace callers/callees across multiple Minecraft versions. Runtime tools interact with a running Minecraft instance through the DebugBridge mod: execute Groovy inside the JVM, capture game state snapshots and screenshots, inspect open GUI screens, list and inspect nearby entities and block-entities, render item textures from inventory slots or registry IDs, highlight entities or blocks in-world for the user, review recent chat, run slash commands, and drive session control (join/leave servers, quit the client, reconnect after a relaunch). Also exposes an MCP resources surface — including a Python client guide for the DebugBridge wire protocol and a build → deploy → relaunch → rejoin dev-loop guide — for agents that want to script the bridge directly instead of going through these tools.",
   "author": {
