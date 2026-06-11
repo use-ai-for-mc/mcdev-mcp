@@ -5,8 +5,9 @@ import { checkSessionControlEnabled } from "./session-control.js";
 export const mcLeaveServerTool = {
     name: "mc_leave_server",
     description: `Leave the current world or server and return to the title
-screen. No-op if not in a world. This ends the user's current play session —
-only do it when asked, or as part of a dev loop the user set up.
+screen. If not in a world, it still resets whatever menu screen is open back
+to the title screen. This ends the user's current play session — only do it
+when asked, or as part of a dev loop the user set up.
 
 Fire-and-acknowledge: the ack means the disconnect was queued on the game
 thread, not that it finished. Requires session_control_enabled=true in the

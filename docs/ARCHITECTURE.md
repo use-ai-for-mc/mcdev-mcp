@@ -16,7 +16,7 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 │                         mcdev-mcp Server                             │
 │                                                                      │
 │   ┌──────────────────────────┐    ┌────────────────────────────┐   │
-│   │  Static Tools (8)         │    │ Runtime Tools (18 + 2 dev) │   │
+│   │  Static Tools (8)         │    │ Runtime Tools (23 + 2 dev) │   │
 │   │  src/tools/static/        │    │ src/tools/runtime/         │   │
 │   │  ┌─────────────────────┐  │    │  ┌──────────────────────┐  │   │
 │   │  │ mc_version          │  │    │  │ mc_connect           │  │   │
@@ -25,10 +25,10 @@ mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents 
 │   │  │ mc_list_classes/pkg │  │    │  │ mc_screenshot        │  │   │
 │   │  │ mc_find_hierarchy   │  │    │  │ mc_screen_inspect    │  │   │
 │   │  │ mc_find_refs        │  │    │  │ mc_chat_history      │  │   │
-│   │  └──────────┬──────────┘  │    │  │ mc_nearby_*  / *_det │  │   │
-│   │             │              │   │  │ mc_looked_at_entity  │  │   │
-│   │             ▼              │   │  │ mc_*_glow / clear    │  │   │
-│   │   ┌─────────────────┐      │   │  │ mc_get_item_texture* │  │   │
+│   │  └──────────┬──────────┘  │    │  │ mc_nearby/looked_at* │  │   │
+│   │             │              │   │  │ mc_*_glow / textures │  │   │
+│   │             ▼              │   │  │ mc_join/leave_server │  │   │
+│   │   ┌─────────────────┐      │   │  │ mc_quit / mc_wait_*  │  │   │
 │   │   │  SourceStore    │      │   │  │ ── opt-in (env) ───  │  │   │
 │   │   │ (source-store)  │      │   │  │ mc_run_command       │  │   │
 │   │   └────────┬────────┘      │   │  │ mc_script_logs       │  │   │

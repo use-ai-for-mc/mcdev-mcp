@@ -478,7 +478,7 @@ Join a multiplayer server (disconnecting from the current world first if needed)
 ```
 
 ### `mc_leave_server`
-Leave the current world/server to the title screen. No-op if not in a world. Fire-and-acknowledge — the ack means the disconnect was queued on the game thread.
+Leave the current world/server to the title screen (when not in a world, it still resets the open menu screen to the title screen). Fire-and-acknowledge — the ack means the disconnect was queued on the game thread.
 
 ```json
 {}

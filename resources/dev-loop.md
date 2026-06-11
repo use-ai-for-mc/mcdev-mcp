@@ -55,8 +55,14 @@ Compose and record a launch command. Working examples:
 |---|---|
 | Linux, native Prism | `prismlauncher --launch "<instance>"` |
 | Linux, Flatpak Prism | `flatpak run org.prismlauncher.PrismLauncher --launch "<instance>"` |
-| macOS | `open -a "Prism Launcher" --args --launch "<instance>"` |
+| macOS | `"/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" --launch "<instance>"` |
 | Windows | `start "" "C:\…\prismlauncher.exe" --launch "<instance>"` |
+
+On macOS, call the binary inside the app bundle directly. The tempting
+`open -a "Prism Launcher" --args --launch "<instance>"` only forwards
+`--args` when the app isn't already running — and Prism usually *is*
+(it stays open behind the game), making the relaunch a silent no-op. The
+direct binary forwards the launch to the running Prism instance instead.
 
 If the instance is run by the **official Minecraft launcher** (`gameDir` is
 `~/.minecraft` with no instance directory), there is no reliable CLI launch —
