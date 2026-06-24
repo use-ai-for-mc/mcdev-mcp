@@ -59,7 +59,7 @@
     "@anthropic-ai/mcpb": "^2.1.2",
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.7.0",
+    "@types/node": "^26.0.0",
     "@types/sql.js": "^1.4.11",
     "@types/unzipper": "^0.10.10",
     "@types/ws": "^8.5.0",
