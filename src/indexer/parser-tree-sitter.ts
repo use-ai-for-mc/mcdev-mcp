@@ -8,13 +8,17 @@
  */
 
 import * as fs from 'fs';
-import Parser from 'tree-sitter';
-import Java from 'tree-sitter-java';
+import { createRequire } from 'module';
+import type Parser from 'tree-sitter';
 import { ClassKind, FieldInfo, MethodInfo } from '../utils/types.js';
 import type { ParsedClass } from './parser.js';
 
 type SyntaxNode = Parser.SyntaxNode;
+type ParserConstructor = new () => Parser;
 
+const require = createRequire(import.meta.url);
+let ParserCtor: ParserConstructor | null = null;
+let javaLanguage: unknown | null = null;
 let sharedParser: Parser | null = null;
 
 export function parseJavaFileTreeSitter(filePath: string): ParsedClass | null {
@@ -29,10 +33,11 @@ export function parseJavaContentTreeSitter(content: string, filePath: string): P
   } catch {
     return null;
   }
-  if (tree.rootNode.hasError) return null;
+  const rootNode = readRootNode(tree);
+  if (!rootNode || rootNode.hasError) return null;
 
-  const packageName = readPackageName(tree.rootNode);
-  const top = findTopLevelType(tree.rootNode);
+  const packageName = readPackageName(rootNode);
+  const top = findTopLevelType(rootNode);
   if (!top) return null;
 
   const className = childText(top, 'name');
@@ -60,10 +65,36 @@ export function parseJavaContentTreeSitter(content: string, filePath: string): P
 
 function getParser(): Parser {
   if (!sharedParser) {
+    const { Parser, Java } = loadTreeSitter();
     sharedParser = new Parser();
     sharedParser.setLanguage(Java);
   }
   return sharedParser;
+}
+
+function loadTreeSitter(): { Parser: ParserConstructor; Java: unknown } {
+  if (!ParserCtor || !javaLanguage) {
+    ParserCtor = require('tree-sitter') as ParserConstructor;
+    javaLanguage = require('tree-sitter-java') as unknown;
+  }
+  return { Parser: ParserCtor, Java: javaLanguage };
+}
+
+function readRootNode(tree: Parser.Tree | null | undefined): SyntaxNode | null {
+  if (!tree) return null;
+
+  try {
+    const rootNode = tree.rootNode;
+    if (rootNode) return rootNode;
+  } catch {
+    // Fall through to rootNodeWithOffset below.
+  }
+
+  try {
+    return tree.rootNodeWithOffset(0, { row: 0, column: 0 }) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function readPackageName(root: SyntaxNode): string {
