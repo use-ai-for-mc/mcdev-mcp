@@ -3,7 +3,6 @@ export interface ParsedClass {
   className: string;
   fullName: string;
   info: import('../utils/types.js').ClassInfo;
-  rawContent: string;
 }
 
 export interface IndexBuildResult {

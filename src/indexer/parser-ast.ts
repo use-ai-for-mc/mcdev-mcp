@@ -35,9 +35,14 @@ export function parseJavaFileAst(filePath: string): ParsedClass | null {
 }
 
 export function parseJavaContentAst(content: string, filePath: string): ParsedClass | null {
-    let cst: CstNode;
+    let pkgName: string;
+    let top: TopLevelType | null;
     try {
-        cst = parse(content) as CstNode;
+        const cst = parse(content) as CstNode;
+        const visitor = new JavaIndexVisitor();
+        visitor.visit(cst);
+        pkgName = visitor.pkgName;
+        top = visitor.topLevel;
     } catch {
         // Match the regex parser's contract: on unparseable input, return
         // null rather than throwing. buildIndex() then skips this file
@@ -45,17 +50,14 @@ export function parseJavaContentAst(content: string, filePath: string): ParsedCl
         return null;
     }
 
-    const visitor = new JavaIndexVisitor();
-    visitor.visit(cst);
-    const top = visitor.topLevel;
     if (!top || !top.className) return null;
 
     const relativePath = filePath.replace(/\\/g, '/');
 
     return {
-        packageName: visitor.pkgName,
+        packageName: pkgName,
         className: top.className,
-        fullName: visitor.pkgName ? `${visitor.pkgName}.${top.className}` : top.className,
+        fullName: pkgName ? `${pkgName}.${top.className}` : top.className,
         info: {
             kind: top.kind,
             super: top.superClass,
@@ -64,7 +66,6 @@ export function parseJavaContentAst(content: string, filePath: string): ParsedCl
             methods: top.methods,
             sourcePath: relativePath,
         },
-        rawContent: content,
     };
 }
 

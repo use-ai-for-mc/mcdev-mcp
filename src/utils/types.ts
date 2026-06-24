@@ -46,7 +46,7 @@ export interface IndexManifest {
    * so an upgrade to the AST parser can detect stale-but-still-usable
    * indices and prompt for a `rebuild`.
    */
-  indexerVersion?: 'regex' | 'ast';
+  indexerVersion?: 'regex' | 'ast' | 'tree-sitter';
   packages: {
     minecraft: string[];
     fabric: string[];

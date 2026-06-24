@@ -263,3 +263,21 @@ public class C extends Base implements Foo, Bar {}
         expect(a.info.interfaces).toEqual(r.info.interfaces);
     });
 });
+
+describe('AST parser — memory shape', () => {
+    it('does not retain rawContent on parse results', () => {
+        const src = `
+package net.minecraft.test;
+
+public class MemoryShape {
+    private int value;
+    public void run() {}
+}
+`;
+        const r = parseJavaContentAst(src, '/MemoryShape.java');
+        expect(r).not.toBeNull();
+        expect(r?.info.fields.length).toBeGreaterThan(0);
+        expect(r?.info.methods.length).toBeGreaterThan(0);
+        expect(Object.prototype.hasOwnProperty.call(r, 'rawContent')).toBe(false);
+    });
+});
