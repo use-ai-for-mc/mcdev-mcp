@@ -74,5 +74,10 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "allowScripts": {
+    "tree-sitter@0.21.1": true,
+    "tree-sitter-java@0.23.5": true,
+    "unrs-resolver@1.11.1": true
   }
 }
