@@ -21,7 +21,6 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "compare:parsers": "npm run build && node scripts/compare-parser-backends.mjs",
     "prepublishOnly": "npm run build",
     "mcpb": "bash scripts/build-mcpb.sh"
   },
@@ -53,8 +52,6 @@
     "glob": "^13.0.6",
     "java-parser": "^3.0.1",
     "sql.js": "^1.14.1",
-    "tree-sitter": "^0.21.1",
-    "tree-sitter-java": "^0.23.5",
     "unzipper": "^0.12.3",
     "ws": "^8.20.1"
   },

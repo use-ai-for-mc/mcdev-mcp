@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import { ClassInfo, FieldInfo, MethodInfo, ClassKind } from '../utils/types.js';
 import { isEnvOn } from '../utils/env.js';
 import { parseJavaFileAst, parseJavaContentAst } from './parser-ast.js';
-import { parseJavaFileTreeSitter, parseJavaContentTreeSitter } from './parser-tree-sitter.js';
 
 export interface ParsedClass {
   packageName: string;
@@ -18,15 +17,12 @@ export interface ParsedClass {
  * — see .dream/review.md). The AST parser (`'ast'`) is `java-parser`-backed
  * (Chevrotain CST) and handles all of those.
  *
- * Toggle with `MCDEV_AST_PARSER=1` (or `true`). `MCDEV_TREE_SITTER_PARSER=1`
- * selects the experimental Tree-sitter backend instead. One release of mutual
- * coexistence is intentional: it lets users compare index quality against the
- * regex baseline before we flip the default.
+ * Toggle with `MCDEV_AST_PARSER=1` (or `true`). The AST parser remains opt-in
+ * while users compare index quality against the regex baseline.
  */
-export type ParserBackend = 'regex' | 'ast' | 'tree-sitter';
+export type ParserBackend = 'regex' | 'ast';
 
 export function getParserBackend(): ParserBackend {
-  if (isEnvOn('MCDEV_TREE_SITTER_PARSER')) return 'tree-sitter';
   return isEnvOn('MCDEV_AST_PARSER') ? 'ast' : 'regex';
 }
 
@@ -36,7 +32,6 @@ export function parseJavaFile(filePath: string): ParsedClass | null {
 
 export function parseJavaFileWithBackend(filePath: string, backend: ParserBackend): ParsedClass | null {
   if (backend === 'ast') return parseJavaFileAst(filePath);
-  if (backend === 'tree-sitter') return parseJavaFileTreeSitter(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
   return parseJavaContentRegex(content, filePath);
 }
@@ -95,7 +90,6 @@ export function parseJavaContentWithBackend(
   backend: ParserBackend
 ): ParsedClass | null {
   if (backend === 'ast') return parseJavaContentAst(content, filePath);
-  if (backend === 'tree-sitter') return parseJavaContentTreeSitter(content, filePath);
   return parseJavaContentRegex(content, filePath);
 }
 

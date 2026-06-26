@@ -307,8 +307,8 @@ function parseSingleFileAfterWorkerFailure(file: string): ParsedClass[] | null {
 
 function getSingleFileFallbackBackends(): ParserBackend[] {
   const override = process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
-  if (override === 'regex' || override === 'tree-sitter') return [override];
-  return ['tree-sitter', 'regex'];
+  if (override === 'regex') return [override];
+  return ['regex'];
 }
 
 function parseBatchInWorker(files: string[], heapMb = getAstWorkerHeapMb()): Promise<ParsedClass[]> {
@@ -322,7 +322,6 @@ function parseBatchInWorker(files: string[], heapMb = getAstWorkerHeapMb()): Pro
       env: {
         ...process.env,
         MCDEV_AST_PARSER: '1',
-        MCDEV_TREE_SITTER_PARSER: '',
       },
       execArgv: [
         ...getWorkerExecArgv(),

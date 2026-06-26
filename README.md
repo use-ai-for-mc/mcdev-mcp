@@ -561,7 +561,7 @@ Set `MCDEV_AST_PARSER=1` before `init` or `rebuild` to use the new [java-parser]
 - Picks up interface constants and `default`/`static` interface methods that the regex parser misses.
 - Does not fold nested-class members into the outer type's lists.
 
-In a head-to-head on Minecraft 1.21.11 source (500-file sample), the AST parser found **~2× more fields** and **~33% fewer (correctly attributed) methods** than the regex parser. It is ~4.5× slower per file, so a full re-index runs in roughly **75 seconds** instead of 17 — acceptable inside an `init` that already takes 2–5 minutes for download + decompile. Very large generated command classes are isolated in bounded worker processes; if `java-parser` still exhausts a worker on one file, the indexer falls back to Tree-sitter and then the regex parser for that file instead of failing the whole rebuild.
+In a head-to-head on Minecraft 1.21.11 source (500-file sample), the AST parser found **~2× more fields** and **~33% fewer (correctly attributed) methods** than the regex parser. It is ~4.5× slower per file, so a full re-index runs in roughly **75 seconds** instead of 17 — acceptable inside an `init` that already takes 2–5 minutes for download + decompile. Very large generated command classes are isolated in bounded worker processes; if `java-parser` still exhausts a worker on one file, the indexer falls back to the regex parser for that file instead of failing the whole rebuild.
 
 ```bash
 MCDEV_AST_PARSER=1 npx mcdev-mcp init -v 1.21.11

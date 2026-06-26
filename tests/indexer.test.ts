@@ -91,7 +91,6 @@ public class ${className} {
 
 describe('AST parser worker index build', () => {
   const ORIG_AST = process.env.MCDEV_AST_PARSER;
-  const ORIG_TREE = process.env.MCDEV_TREE_SITTER_PARSER;
   const ORIG_WORKERS = process.env.MCDEV_INDEX_WORKERS;
   const ORIG_BATCH = process.env.MCDEV_INDEX_BATCH_SIZE;
   const ORIG_HEAP = process.env.MCDEV_INDEX_WORKER_HEAP_MB;
@@ -105,7 +104,6 @@ describe('AST parser worker index build', () => {
 
   beforeEach(() => {
     process.env.MCDEV_AST_PARSER = '1';
-    delete process.env.MCDEV_TREE_SITTER_PARSER;
     process.env.MCDEV_INDEX_WORKERS = '1';
     process.env.MCDEV_INDEX_BATCH_SIZE = '1';
     if (!fs.existsSync(tempDir)) {
@@ -116,8 +114,6 @@ describe('AST parser worker index build', () => {
   afterEach(() => {
     if (ORIG_AST === undefined) delete process.env.MCDEV_AST_PARSER;
     else process.env.MCDEV_AST_PARSER = ORIG_AST;
-    if (ORIG_TREE === undefined) delete process.env.MCDEV_TREE_SITTER_PARSER;
-    else process.env.MCDEV_TREE_SITTER_PARSER = ORIG_TREE;
     if (ORIG_WORKERS === undefined) delete process.env.MCDEV_INDEX_WORKERS;
     else process.env.MCDEV_INDEX_WORKERS = ORIG_WORKERS;
     if (ORIG_BATCH === undefined) delete process.env.MCDEV_INDEX_BATCH_SIZE;
