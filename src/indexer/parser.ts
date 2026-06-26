@@ -31,7 +31,10 @@ export function getParserBackend(): ParserBackend {
 }
 
 export function parseJavaFile(filePath: string): ParsedClass | null {
-  const backend = getParserBackend();
+  return parseJavaFileWithBackend(filePath, getParserBackend());
+}
+
+export function parseJavaFileWithBackend(filePath: string, backend: ParserBackend): ParsedClass | null {
   if (backend === 'ast') return parseJavaFileAst(filePath);
   if (backend === 'tree-sitter') return parseJavaFileTreeSitter(filePath);
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -83,7 +86,14 @@ function parseDeclaration(block: string): {
 }
 
 export function parseJavaContent(content: string, filePath: string): ParsedClass | null {
-  const backend = getParserBackend();
+  return parseJavaContentWithBackend(content, filePath, getParserBackend());
+}
+
+export function parseJavaContentWithBackend(
+  content: string,
+  filePath: string,
+  backend: ParserBackend
+): ParsedClass | null {
   if (backend === 'ast') return parseJavaContentAst(content, filePath);
   if (backend === 'tree-sitter') return parseJavaContentTreeSitter(content, filePath);
   return parseJavaContentRegex(content, filePath);
