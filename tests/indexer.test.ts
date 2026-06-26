@@ -94,8 +94,13 @@ describe('AST parser worker index build', () => {
   const ORIG_TREE = process.env.MCDEV_TREE_SITTER_PARSER;
   const ORIG_WORKERS = process.env.MCDEV_INDEX_WORKERS;
   const ORIG_BATCH = process.env.MCDEV_INDEX_BATCH_SIZE;
+  const ORIG_HEAP = process.env.MCDEV_INDEX_WORKER_HEAP_MB;
+  const ORIG_RETRY_HEAP = process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB;
   const ORIG_WORKER_PATH = process.env.MCDEV_INDEX_PARSE_WORKER_PATH;
   const ORIG_MARKER = process.env.MCDEV_INDEX_WORKER_MARKER;
+  const ORIG_SINGLE_FILE_FALLBACK = process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
+  const ORIG_ARGV_CAPTURE = process.env.MCDEV_ARGV_CAPTURE;
+  const ORIG_EXEC_ARGV = [...process.execArgv];
   const tempDir = path.join(os.tmpdir(), 'mcdev-mcp-ast-worker-' + Date.now());
 
   beforeEach(() => {
@@ -117,10 +122,19 @@ describe('AST parser worker index build', () => {
     else process.env.MCDEV_INDEX_WORKERS = ORIG_WORKERS;
     if (ORIG_BATCH === undefined) delete process.env.MCDEV_INDEX_BATCH_SIZE;
     else process.env.MCDEV_INDEX_BATCH_SIZE = ORIG_BATCH;
+    if (ORIG_HEAP === undefined) delete process.env.MCDEV_INDEX_WORKER_HEAP_MB;
+    else process.env.MCDEV_INDEX_WORKER_HEAP_MB = ORIG_HEAP;
+    if (ORIG_RETRY_HEAP === undefined) delete process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB;
+    else process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB = ORIG_RETRY_HEAP;
     if (ORIG_WORKER_PATH === undefined) delete process.env.MCDEV_INDEX_PARSE_WORKER_PATH;
     else process.env.MCDEV_INDEX_PARSE_WORKER_PATH = ORIG_WORKER_PATH;
     if (ORIG_MARKER === undefined) delete process.env.MCDEV_INDEX_WORKER_MARKER;
     else process.env.MCDEV_INDEX_WORKER_MARKER = ORIG_MARKER;
+    if (ORIG_SINGLE_FILE_FALLBACK === undefined) delete process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
+    else process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK = ORIG_SINGLE_FILE_FALLBACK;
+    if (ORIG_ARGV_CAPTURE === undefined) delete process.env.MCDEV_ARGV_CAPTURE;
+    else process.env.MCDEV_ARGV_CAPTURE = ORIG_ARGV_CAPTURE;
+    process.execArgv.splice(0, process.execArgv.length, ...ORIG_EXEC_ARGV);
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -162,6 +176,81 @@ public class Worker${i} {
       'test/worker-manifest'
     );
     expect(manifest?.indexerVersion).toBe('ast');
+  }, 20000);
+
+  test('falls back to a lightweight parser when a single-file AST worker keeps crashing', async () => {
+    const workerPath = path.join(tempDir, 'crashing-worker.cjs');
+    fs.writeFileSync(workerPath, `
+process.on('message', () => {
+  process.exit(134);
+});
+`);
+    process.env.MCDEV_INDEX_PARSE_WORKER_PATH = workerPath;
+    process.env.MCDEV_INDEX_WORKER_HEAP_MB = '128';
+    process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB = '256';
+    process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK = 'regex';
+    const markerPath = path.join(tempDir, 'fallback-worker-used.txt');
+    process.env.MCDEV_INDEX_WORKER_MARKER = markerPath;
+
+    const pkgDir = path.join(tempDir, 'fallback');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'Fallback.java'), `
+package worker.fallback;
+
+public class Fallback {
+    public int value() { return 1; }
+}
+`);
+
+    const version = `ast-worker-fallback-${Date.now()}`;
+    const result = await buildIndex({
+      minecraftSourceDir: tempDir,
+      fabricApiSourceDir: null,
+      minecraftVersion: version,
+      fabricApiVersion: null,
+    });
+
+    expect(result.totalClasses).toBe(1);
+    const indexed = loadPackageIndex('minecraft', 'worker.fallback', version);
+    expect(indexed?.classes.Fallback).toBeDefined();
+    expect(fs.readFileSync(markerPath, 'utf-8').trim().split('\n')).toHaveLength(1);
+  }, 20000);
+
+  test('does not pass parent heap percentage flags to parse workers', async () => {
+    const workerPath = path.join(tempDir, 'argv-worker.cjs');
+    const argvPath = path.join(tempDir, 'argv.json');
+    fs.writeFileSync(workerPath, `
+const fs = require('fs');
+process.on('message', () => {
+  fs.writeFileSync(process.env.MCDEV_ARGV_CAPTURE, JSON.stringify(process.execArgv));
+  process.send({ type: 'result', parsed: [] }, () => process.exit(0));
+});
+`);
+    process.env.MCDEV_INDEX_PARSE_WORKER_PATH = workerPath;
+    process.env.MCDEV_ARGV_CAPTURE = argvPath;
+    process.env.MCDEV_INDEX_WORKER_HEAP_MB = '256';
+    process.execArgv.push('--max-old-space-size-percentage=75');
+    process.execArgv.push('--max-old-space-size=12345');
+
+    const pkgDir = path.join(tempDir, 'argv');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'Argv.java'), `
+package worker.argv;
+
+public class Argv {}
+`);
+
+    await buildIndex({
+      minecraftSourceDir: tempDir,
+      fabricApiSourceDir: null,
+      minecraftVersion: `ast-worker-argv-${Date.now()}`,
+      fabricApiVersion: null,
+    });
+
+    const childArgv = JSON.parse(fs.readFileSync(argvPath, 'utf-8')) as string[];
+    expect(childArgv).toContain('--max-old-space-size=256');
+    expect(childArgv).not.toContain('--max-old-space-size=12345');
+    expect(childArgv.filter(arg => arg.startsWith('--max-old-space-size-percentage'))).toEqual([]);
   }, 20000);
 });
 

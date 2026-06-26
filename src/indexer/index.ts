@@ -5,7 +5,13 @@ import { fork } from 'child_process';
 import { fileURLToPath } from 'url';
 import { glob } from 'glob';
 import { PackageIndex, IndexManifest, ClassInfo } from '../utils/types.js';
-import { parseJavaFile, getParserBackend, type ParsedClass, type ParserBackend } from './parser.js';
+import {
+  parseJavaFile,
+  parseJavaFileWithBackend,
+  getParserBackend,
+  type ParsedClass,
+  type ParserBackend
+} from './parser.js';
 import {
   getVersionedIndexManifestPath,
   getVersionedPackageIndexPath,
@@ -265,11 +271,17 @@ async function parseBatchWithRetry(files: string[]): Promise<ParsedClass[]> {
     return await parseBatchInWorker(files);
   } catch (error) {
     if (files.length <= 1) {
+      const fallback = parseSingleFileAfterWorkerFailure(files[0]);
+      if (fallback !== null) return fallback;
+
       const retryHeapMb = getAstWorkerRetryHeapMb();
       if (retryHeapMb > getAstWorkerHeapMb()) {
         try {
           return await parseBatchInWorker(files, retryHeapMb);
-        } catch {}
+        } catch (retryError) {
+          const cause = retryError instanceof Error ? retryError.message : String(retryError);
+          throw new Error(`Java parse worker failed for ${files[0]}: ${cause}`, { cause: retryError });
+        }
       }
 
       const cause = error instanceof Error ? error.message : String(error);
@@ -281,6 +293,22 @@ async function parseBatchWithRetry(files: string[]): Promise<ParsedClass[]> {
     const right = await parseBatchWithRetry(files.slice(midpoint));
     return [...left, ...right];
   }
+}
+
+function parseSingleFileAfterWorkerFailure(file: string): ParsedClass[] | null {
+  for (const backend of getSingleFileFallbackBackends()) {
+    try {
+      const parsed = parseJavaFileWithBackend(file, backend);
+      return parsed ? [parsed] : [];
+    } catch {}
+  }
+  return null;
+}
+
+function getSingleFileFallbackBackends(): ParserBackend[] {
+  const override = process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
+  if (override === 'regex' || override === 'tree-sitter') return [override];
+  return ['tree-sitter', 'regex'];
 }
 
 function parseBatchInWorker(files: string[], heapMb = getAstWorkerHeapMb()): Promise<ParsedClass[]> {
@@ -356,21 +384,36 @@ function getWorkerExecArgv(): string[] {
   const args: string[] = [];
   for (let i = 0; i < process.execArgv.length; i++) {
     const arg = process.execArgv[i];
-    if (
-      arg.startsWith('--max-old-space-size=') ||
-      arg.startsWith('--input-type=') ||
-      arg === '--input-type' ||
-      arg === '--eval' ||
-      arg === '-e' ||
-      arg === '--print' ||
-      arg === '-p'
-    ) {
-      if (arg === '--input-type' || arg === '--eval' || arg === '-e' || arg === '--print' || arg === '-p') i++;
+    if (isInlineWorkerArgOverride(arg)) {
+      continue;
+    }
+    if (isWorkerArgWithValue(arg)) {
+      i++;
       continue;
     }
     args.push(arg);
   }
   return args;
+}
+
+function isInlineWorkerArgOverride(arg: string): boolean {
+  return arg.startsWith('--max-old-space-size=') ||
+    arg.startsWith('--max_old_space_size=') ||
+    arg.startsWith('--max-old-space-size-percentage=') ||
+    arg.startsWith('--max_old_space_size_percentage=') ||
+    arg.startsWith('--input-type=');
+}
+
+function isWorkerArgWithValue(arg: string): boolean {
+  return arg === '--max-old-space-size' ||
+    arg === '--max_old_space_size' ||
+    arg === '--max-old-space-size-percentage' ||
+    arg === '--max_old_space_size_percentage' ||
+    arg === '--input-type' ||
+    arg === '--eval' ||
+    arg === '-e' ||
+    arg === '--print' ||
+    arg === '-p';
 }
 
 function getAstWorkerCount(): number {
