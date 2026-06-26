@@ -98,6 +98,7 @@ describe('AST parser worker index build', () => {
   const ORIG_RETRY_HEAP = process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB;
   const ORIG_WORKER_PATH = process.env.MCDEV_INDEX_PARSE_WORKER_PATH;
   const ORIG_MARKER = process.env.MCDEV_INDEX_WORKER_MARKER;
+  const ORIG_SINGLE_FILE_FALLBACK = process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
   const ORIG_ARGV_CAPTURE = process.env.MCDEV_ARGV_CAPTURE;
   const ORIG_EXEC_ARGV = [...process.execArgv];
   const tempDir = path.join(os.tmpdir(), 'mcdev-mcp-ast-worker-' + Date.now());
@@ -129,6 +130,8 @@ describe('AST parser worker index build', () => {
     else process.env.MCDEV_INDEX_PARSE_WORKER_PATH = ORIG_WORKER_PATH;
     if (ORIG_MARKER === undefined) delete process.env.MCDEV_INDEX_WORKER_MARKER;
     else process.env.MCDEV_INDEX_WORKER_MARKER = ORIG_MARKER;
+    if (ORIG_SINGLE_FILE_FALLBACK === undefined) delete process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
+    else process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK = ORIG_SINGLE_FILE_FALLBACK;
     if (ORIG_ARGV_CAPTURE === undefined) delete process.env.MCDEV_ARGV_CAPTURE;
     else process.env.MCDEV_ARGV_CAPTURE = ORIG_ARGV_CAPTURE;
     process.execArgv.splice(0, process.execArgv.length, ...ORIG_EXEC_ARGV);
@@ -175,7 +178,7 @@ public class Worker${i} {
     expect(manifest?.indexerVersion).toBe('ast');
   }, 20000);
 
-  test('falls back to Tree-sitter when a single-file AST worker keeps crashing', async () => {
+  test('falls back to a lightweight parser when a single-file AST worker keeps crashing', async () => {
     const workerPath = path.join(tempDir, 'crashing-worker.cjs');
     fs.writeFileSync(workerPath, `
 process.on('message', () => {
@@ -185,6 +188,7 @@ process.on('message', () => {
     process.env.MCDEV_INDEX_PARSE_WORKER_PATH = workerPath;
     process.env.MCDEV_INDEX_WORKER_HEAP_MB = '128';
     process.env.MCDEV_INDEX_WORKER_RETRY_HEAP_MB = '256';
+    process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK = 'regex';
     const markerPath = path.join(tempDir, 'fallback-worker-used.txt');
     process.env.MCDEV_INDEX_WORKER_MARKER = markerPath;
 

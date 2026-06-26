@@ -271,7 +271,7 @@ async function parseBatchWithRetry(files: string[]): Promise<ParsedClass[]> {
     return await parseBatchInWorker(files);
   } catch (error) {
     if (files.length <= 1) {
-      const fallback = parseSingleFileWithTreeSitter(files[0]);
+      const fallback = parseSingleFileAfterWorkerFailure(files[0]);
       if (fallback !== null) return fallback;
 
       const retryHeapMb = getAstWorkerRetryHeapMb();
@@ -295,13 +295,20 @@ async function parseBatchWithRetry(files: string[]): Promise<ParsedClass[]> {
   }
 }
 
-function parseSingleFileWithTreeSitter(file: string): ParsedClass[] | null {
-  try {
-    const parsed = parseJavaFileWithBackend(file, 'tree-sitter');
-    return parsed ? [parsed] : [];
-  } catch {
-    return null;
+function parseSingleFileAfterWorkerFailure(file: string): ParsedClass[] | null {
+  for (const backend of getSingleFileFallbackBackends()) {
+    try {
+      const parsed = parseJavaFileWithBackend(file, backend);
+      return parsed ? [parsed] : [];
+    } catch {}
   }
+  return null;
+}
+
+function getSingleFileFallbackBackends(): ParserBackend[] {
+  const override = process.env.MCDEV_INDEX_SINGLE_FILE_FALLBACK;
+  if (override === 'regex' || override === 'tree-sitter') return [override];
+  return ['tree-sitter', 'regex'];
 }
 
 function parseBatchInWorker(files: string[], heapMb = getAstWorkerHeapMb()): Promise<ParsedClass[]> {
