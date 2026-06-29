@@ -68,11 +68,12 @@ export class BridgeSession {
         // Clear the slot once this attempt settles, regardless of outcome.
         // Retain the early-binding so a concurrent successful attempt can't
         // be cleared by an older failure.
-        attempt.finally(() => {
+        const clearConnectPromise = () => {
             if (this.connectPromise === attempt) {
                 this.connectPromise = null;
             }
-        });
+        };
+        attempt.then(clearConnectPromise, clearConnectPromise);
         return attempt;
     }
 
