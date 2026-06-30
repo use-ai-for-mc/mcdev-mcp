@@ -68,12 +68,18 @@ export class BridgeSession {
         // Clear the slot once this attempt settles, regardless of outcome.
         // Retain the early-binding so a concurrent successful attempt can't
         // be cleared by an older failure.
-        const clearConnectPromise = () => {
+        //
+        // Note: this must use `.then(clear, clear)` rather than `.finally(clear)`
+        // because the latter returns a new promise that inherits `attempt`'s
+        // rejection. Without an attached handler Node treats it as unhandled
+        // and terminates the MCP stdio process, surfacing in Codex as
+        // "Transport closed".
+        const clearConnectSlot = () => {
             if (this.connectPromise === attempt) {
                 this.connectPromise = null;
             }
         };
-        attempt.then(clearConnectPromise, clearConnectPromise);
+        attempt.then(clearConnectSlot, clearConnectSlot);
         return attempt;
     }
 
