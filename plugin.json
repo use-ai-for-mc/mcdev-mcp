@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mcdev-mcp",
+  "version": "2.2.1",
+  "description": "MCP server for Minecraft mod development - provides decompiled code access, symbol search, and runtime interaction via DebugBridge",
+  "author": {
+    "name": "weikengchen",
+    "url": "https://github.com/weikengchen"
+  },
+  "homepage": "https://github.com/use-ai-for-mc/mcdev-mcp",
+  "repository": "https://github.com/use-ai-for-mc/mcdev-mcp.git",
+  "license": "MIT",
+  "keywords": [
+    "minecraft",
+    "mcp",
+    "fabric",
+    "modding",
+    "decompiler",
+    "model-context-protocol",
+    "ai",
+    "llm",
+    "debugbridge"
+  ]
+}
