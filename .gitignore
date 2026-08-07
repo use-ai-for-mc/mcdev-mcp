@@ -35,3 +35,6 @@ coverage/
 # MCPB build output (produced by scripts/build-mcpb.sh and CI release workflow)
 dist-mcpb/
 *.mcpb
+
+# Agent Plugins build output (produced by scripts/build-agent-plugin.sh)
+dist-agent-plugin/

@@ -717,6 +717,16 @@ npm run lint     # Lint code
 npm run mcpb     # Build a Claude Desktop MCPB bundle for the current platform
 ```
 
+The MCPB (Anthropic) and Agent Plugins packaging are independent outputs of the
+same server. MCPB remains the Anthropic-distributable format (see below); the
+Agent Plugins package is a directory-based portable package that coexists with
+it. Build the Agent Plugins package with:
+
+```bash
+scripts/build-agent-plugin.sh
+# → dist-agent-plugin/  (plugin.json + mcp.json + skills/ + dist/ + node_modules)
+```
+
 ## Releasing
 
 Releases are tag-driven. Pushing a `v*` tag triggers GitHub Actions to:
@@ -753,6 +763,47 @@ npm run mcpb
 ```
 
 The bundle is universal — pure JavaScript plus [`sql.js`](https://github.com/sql-js/sql.js) (SQLite compiled to WebAssembly), no native binaries. The same `.mcpb` works on macOS (arm64 and x86_64), Linux (x64/arm64), and Windows. Node ≥ 20 is required at runtime (from `package.json` `engines`).
+
+### Agent Plugins packaging (portable)
+
+The [Agent Plugins](https://agent-plugins.org) format is a vendor-neutral,
+directory-based package: a root [`plugin.json`](plugin.json) plus optional
+fixed locations ([`mcp.json`](mcp.json), `skills/`). It is fully independent of
+the Anthropic MCPB format above, and both are built from the same server code
+(`node dist/cli.js serve` via stdio). Nothing here changes or replaces the
+MCPB path.
+
+Build the package with:
+
+```bash
+scripts/build-agent-plugin.sh
+# → dist-agent-plugin/
+#     ├── plugin.json          # Agent Plugins manifest (portable metadata)
+#     ├── mcp.json             # stdio server descriptor
+#     ├── skills/              # Agent Skills (already present in the repo)
+#     ├── dist/                # compiled server
+#     └── node_modules/        # production deps
+```
+
+`mcp.json` launches the same stdio server as MCPB:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "mcdev-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./dist/cli.js", "serve"],
+      "cwd": "./"
+    }
+  }
+}
+```
+
+The built `dist-agent-plugin/` directory is self-contained and ready to be
+zipped (or installed by an Agent Plugins-capable client directly). `init` stays
+terminal-only here exactly as with MCPB.
 
 ### Installing the MCPB in Claude Desktop
 
