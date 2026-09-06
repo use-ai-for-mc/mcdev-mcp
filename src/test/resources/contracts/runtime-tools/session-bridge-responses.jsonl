@@ -1,0 +1,6 @@
+{"label":"join_no_wait","success":true,"resultPresent":true,"result":{"status":"connecting"}}
+{"label":"join_missing_result","success":true,"resultPresent":false}
+{"label":"leave_success","success":true,"resultPresent":true,"result":{"status":"disconnecting"}}
+{"label":"leave_missing_result","success":true,"resultPresent":false}
+{"label":"command_strips_one_slash","success":true,"resultPresent":true,"result":"Command sent: give @s minecraft:stone"}
+{"label":"command_error","success":false,"resultPresent":false,"error":"Command rejected"}

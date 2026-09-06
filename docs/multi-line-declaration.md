@@ -1,5 +1,8 @@
 # Multi-line Declarations and Record Types
 
+> **Pinned Node oracle evidence:** Historical source paths below refer to the commit recorded in
+> [`contracts/node-oracle.json`](../contracts/node-oracle.json), not files in the current Java worktree.
+
 **Status: ✅ COMPLETED**
 
 ## Summary

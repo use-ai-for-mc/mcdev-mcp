@@ -1,302 +1,142 @@
-# Architecture Overview
+# Architecture
 
-mcdev-mcp is an MCP (Model Context Protocol) server that gives AI coding agents two complementary surfaces: **static analysis** of decompiled Minecraft source code, and **runtime interaction** with a live Minecraft client through the [DebugBridge](https://github.com/use-ai-for-mc/debugbridge) mod.
+## Runtime Shape
 
-## System Architecture
+mcdev-mcp ships as one Java 26 shaded executable JAR. The same artifact runs
+the human-facing CLI and the STDIO MCP server:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        MCP Client (AI Agent)                         │
-│                  Any MCP-compatible AI coding tool                   │
-└─────────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ MCP Protocol (JSON-RPC over stdio)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         mcdev-mcp Server                             │
-│                                                                      │
-│   ┌──────────────────────────┐    ┌────────────────────────────┐   │
-│   │  Static Tools (8)         │    │ Runtime Tools (23 + 2 dev) │   │
-│   │  src/tools/static/        │    │ src/tools/runtime/         │   │
-│   │  ┌─────────────────────┐  │    │  ┌──────────────────────┐  │   │
-│   │  │ mc_version          │  │    │  │ mc_connect           │  │   │
-│   │  │ mc_search           │  │    │  │ mc_execute (Groovy)  │  │   │
-│   │  │ mc_get_class/method │  │    │  │ mc_snapshot          │  │   │
-│   │  │ mc_list_classes/pkg │  │    │  │ mc_screenshot        │  │   │
-│   │  │ mc_find_hierarchy   │  │    │  │ mc_screen_inspect    │  │   │
-│   │  │ mc_find_refs        │  │    │  │ mc_chat_history      │  │   │
-│   │  └──────────┬──────────┘  │    │  │ mc_nearby/looked_at* │  │   │
-│   │             │              │   │  │ mc_*_glow / textures │  │   │
-│   │             ▼              │   │  │ mc_join/leave_server │  │   │
-│   │   ┌─────────────────┐      │   │  │ mc_quit / mc_wait_*  │  │   │
-│   │   │  SourceStore    │      │   │  │ ── opt-in (env) ───  │  │   │
-│   │   │ (source-store)  │      │   │  │ mc_run_command       │  │   │
-│   │   └────────┬────────┘      │   │  │ mc_script_logs       │  │   │
-│   │            │                │   │  └──────────┬───────────┘  │   │
-│   │   ┌────────▼────────┐       │   │             │              │   │
-│   │   │ CallgraphQuery  │       │   │  ┌──────────▼───────────┐  │   │
-│   │   │    (query.ts)   │       │   │  │   BridgeSession      │  │   │
-│   │   └────────┬────────┘       │   │  │   (session.ts)       │  │   │
-│   └────────────┼────────────────┘   │  └──────────┬───────────┘  │   │
-│                │                    └─────────────┼──────────────┘   │
-│   ┌────────────▼────────────┐                     │                  │
-│   │       Data Layer         │                     │                  │
-│   │  ┌──────────┐ ┌────────┐ │                     │                  │
-│   │  │ Versioned│ │Versioned│ │                    │                  │
-│   │  │ Symbol   │ │Callgraph│ │                    │                  │
-│   │  │ Index    │ │  DB     │ │                    │                  │
-│   │  │ (JSON)   │ │(SQLite/ │ │                    │                  │
-│   │  │          │ │ sql.js) │ │                    │                  │
-│   │  └──────────┘ └─────────┘ │                    │                  │
-│   └──────────────────────────┘                     │                  │
-└────────────────────────────────────────────────────┼──────────────────┘
-                                                     │
-                            ▼ Vineflower jar         ▼ ws://127.0.0.1:9876-9886
-                            ▼ java-callgraph2     ┌───────────────────────────┐
-┌──────────────────────────────────────────────┐  │ DebugBridge Mod           │
-│ External Java tools (downloaded into cache)  │  │ (running Minecraft JVM)   │
-│  ┌─────────────────┐  ┌────────────────────┐ │  │ github.com/use-ai-for-mc/ │
-│  │   Vineflower    │  │  java-callgraph2   │ │  │ debugbridge               │
-│  │ Decompiler jar  │  │  + Tiny Remapper   │ │  └───────────────────────────┘
-│  │ (single jar)    │  │  (cloned, gradle)  │ │
-│  └─────────────────┘  └────────────────────┘ │
-└──────────────────────────────────────────────┘
+```text
+MCP client
+  -> java -jar mcdev-mcp-<version>.jar serve
+     -> official MCP Java SDK
+     -> typed tool and resource catalogs
+     -> static-analysis services
+     -> DebugBridge WebSocket client
 ```
 
-## Components
+The server has no analysis worker processes and no internal serialization
+protocol. Filesystem and H2 work runs on virtual threads with explicit
+cancellation. DebugBridge remains an independent mod and therefore remains a
+real JSON/WebSocket boundary.
 
-### 1. MCP Server (`src/index.ts`)
+## Package Boundaries
 
-Entry point that implements the MCP protocol. Handles:
-- Tool registration and discovery
-- Request routing to appropriate handlers
-- Auto-initialization on first tool call
+Production code lives below `dev.mcdevmcp`:
 
-### 2. Tool Layer (`src/tools/`)
+| Package              | Responsibility                                                 |
+|----------------------|----------------------------------------------------------------|
+| `app`                | CLI commands, startup, and analysis orchestration.             |
+| `mcp`                | SDK adapter, STDIO server, tool catalog, and resource catalog. |
+| `tools.statictool`   | Source, hierarchy, version, and reference tools.               |
+| `tools.runtime`      | DebugBridge-backed live-game tools.                            |
+| `analysis.index`     | Javac-based source indexing and typed index models.            |
+| `analysis.callgraph` | JDK Class-File API scanning and graph publication.             |
+| `analysis.decompile` | Minecraft download, Tiny Remapper, and Vineflower.             |
+| `storage`            | Platform paths, H2 repositories, JSONL bundles, and cleanup.   |
+| `bridge`             | Nonblocking DebugBridge envelopes, validation, and sessions.   |
+| `packaging`          | Deterministic MCPB metadata and packed-artifact smoke tests.   |
+| `support`            | Environment, JSON, logging, cancellation, and version helpers. |
 
-Tools are split into two registries that both feed into `src/tools/index.ts`:
+The Gradle build has four projects with one-way dependencies:
 
-**Static tools** (`src/tools/static/`) — analyse the decompiled sources offline:
-
-| Tool | Purpose | Data Source |
-|------|---------|-------------|
-| `mc_version` | Set or list the active Minecraft version | Filesystem (cache + index dirs) |
-| `mc_search` | Search classes, methods, and fields by name | Symbol Index (JSON) |
-| `mc_get_class` | Retrieve full class source | Source Files |
-| `mc_get_method` | Retrieve method with context | Source Files |
-| `mc_list_classes` | List classes under a package path | Symbol Index |
-| `mc_list_packages` | List indexed packages | Symbol Index |
-| `mc_find_hierarchy` | Subclasses or interface implementors | Symbol Index |
-| `mc_find_refs` | Callers/callees via the callgraph | Callgraph DB (sql.js / SQLite) |
-
-**Runtime tools** (`src/tools/runtime/`) — interact with a running Minecraft client over a WebSocket bridge:
-
-| Group | Tools |
-|---|---|
-| Connection / execution | `mc_connect`, `mc_execute` |
-| World inspection | `mc_snapshot`, `mc_screenshot`, `mc_screen_inspect`, `mc_chat_history` |
-| Entity introspection | `mc_nearby_entities`, `mc_entity_details`, `mc_looked_at_entity` |
-| Block introspection | `mc_nearby_blocks`, `mc_block_details` |
-| Visual markers | `mc_set_entity_glow`, `mc_set_block_glow`, `mc_clear_block_glow` |
-| Item textures | `mc_get_item_texture`, `mc_get_item_texture_by_id`, `mc_get_entity_item_texture` |
-| Opt-in dev tools (env-gated) | `mc_run_command` (`MCDEV_RUN_COMMAND=1`), `mc_script_logs` (`MCDEV_SCRIPT_LOGS=1`) |
-
-The opt-in tools are skipped from the registry unless the env flag is on; the bridge mod has matching flags so flipping just one side does nothing.
-
-### 3. Decompiler Integration (`src/decompiler/`)
-
-The decompiler stack is **Vineflower** (single self-contained Java jar) plus a Tiny-Remapper-based mapping step. There is no DecompilerMC clone, no Python, and no CFR/Fernflower path.
-
-| File | Responsibility |
-|---|---|
-| `src/decompiler/index.ts` | `ensureDecompiled()` orchestration + status reporting |
-| `src/decompiler/download.ts` | Mojang manifest + jar download (with redirect handling) |
-| `src/decompiler/tools.ts` | Vineflower jar download into `<cache-dir>/tools/vineflower.jar` |
-| `src/decompiler/vineflower.ts` | `java -jar vineflower.jar` driver |
-| `src/decompiler/remapper.ts` | Proguard → Tiny mapping conversion + Tiny-Remapper run |
-
-**Pipeline:**
-1. Download the official Minecraft client JAR (versioned, into `<cache-dir>/cache/<version>/jars/`).
-2. For 1.x.y versions: download Mojang's ProGuard mappings and remap the jar via Tiny Remapper.
-3. For 26.x+ versions: skip the mapping step — the jar is already unobfuscated.
-4. Decompile with Vineflower, output into `<cache-dir>/cache/<version>/client/`.
-
-### 4. Symbol Indexer (`src/indexer/index.ts`)
-
-Parses decompiled Java sources and builds a searchable index:
-- Extracts class, method, field declarations
-- Records line numbers for source lookup
-- Stores per-package for efficient loading
-
-**Index Structure (versioned — see [MULTIVER.md](MULTIVER.md)):**
-```
-<cache-dir>/index/
-└── <version>/
-    ├── manifest.json              # Per-version metadata
-    └── minecraft/
-        ├── net.minecraft.client.json
-        ├── net.minecraft.world.json
-        └── ...                    # one JSON per package
+```text
+benchmark ----\
+               -> root application -> mcp-tool-api
+conformance --/
 ```
 
-### 5. Callgraph System (`src/callgraph/`)
+`mcp-tool-api` is the only production library boundary. `benchmark` and
+`conformance` are independently buildable harness projects that consume the
+root application; the root never depends on them. They are not server
+artifacts, and their JSON/reporting and Tomcat dependencies cannot enter the
+production runtime. The root project still produces the only release JAR.
 
-#### Generator (`index.ts`)
-- Clones and builds java-callgraph2
-- Creates remapped JAR with SpecialSource
-- Runs static analysis
-- Parses output into SQLite database
+`mcp-tool-api` is an explicit JPMS module named
+`dev.mcdevmcp.mcp.tool.api`. Its public descriptor exports whole-value JSON and
+argument decoders, explicit Java JSON type tokens, protocol content values,
+ordinary results, and generic `StructuredToolResult<T>` values. A `TypedJson<T>`
+keeps raw JSON beside the `Class<T>` or `TypeRef<T>` it is meant to become.
+Structured payloads remain Java records or objects until `McpSdkAdapter` places
+only their value in MCP `structuredContent`; Java class names never enter wire
+JSON. Execution, cancellation, catalogs, transport, and Minecraft policy stay
+in the root application. The module requires the official MCP core API
+transitively. The reviewed MCP SDK
+snapshot publishes invalid automatic module names, so this subproject uses a
+build-scoped Gradle artifact transform to supply complete descriptors for
+`mcp-core` and the test-only Jackson 3 provider. A named-module smoke test
+verifies mapper and schema-validator service loading without
+`ALL-MODULE-PATH`, `--add-reads`, or `--add-exports`.
+Because transformed dependencies are not republished, external publication of
+the tool API module remains deferred until the SDK fixes its own metadata or the
+same transform is supplied as a consumer build convention.
 
-#### Query Engine (`query.ts`)
-- Optimized SQLite queries with indexes
-- Caller/callee lookups in <10ms
-- Method search across call graph
+The root executable deliberately remains a classpath application. Its shaded
+JAR is a deployment format for direct `java -jar` and MCPB use, not the unit of
+source architecture; module descriptors from library inputs are excluded when
+the fat JAR is assembled. Future optional runtime backends may ship in a
+separate modular distribution without changing the single-JAR baseline.
 
-**Database Schema:**
-```sql
-CREATE TABLE calls (
-  id INTEGER PRIMARY KEY,
-  caller_class TEXT,
-  caller_method TEXT,
-  caller_desc TEXT,
-  callee_class TEXT,
-  callee_method TEXT,
-  callee_desc TEXT,
-  line_number INTEGER
-);
+## Analysis Pipeline
 
-CREATE INDEX idx_callee ON calls(callee_class, callee_method);
-CREATE INDEX idx_caller ON calls(caller_class, caller_method);
-```
+`init -v <version>` performs one owned pipeline:
 
-### 6. Storage Layer (`src/storage/source-store.ts`)
+1. Resolve the Mojang version metadata and download the client JAR.
+2. Convert official mappings and remap with embedded Tiny Remapper.
+3. Decompile the remapped JAR with embedded Vineflower.
+4. Parse Java source with Javac and atomically publish an H2 symbol database.
+5. Scan JVM class files with the Java Class-File API and publish a deterministic
+   JSONL callgraph bundle.
 
-Provides unified access to:
-- Decompiled source files
-- Symbol index
-- Class/method lookup
+Javac receives batches of source files but produces one typed logical index.
+`MCDEV_INDEX_THREADS` bounds parallel indexing; it does not select an alternate
+backend. Callgraph generation reads class-file instructions because invocation
+edges are bytecode facts, while source declarations and locations remain the
+Javac indexer's responsibility.
 
-## Data Flow
+## Storage And Rebuilds
 
-### Initialization Flow
+Each Minecraft version owns its cache and index state. The symbol database is
+`symbols.mv.db`. Callgraph publication uses immutable generation directories,
+checksummed JSONL data/index files, and an atomic current-generation pointer.
+Writers validate candidates before publication; readers never observe a
+partially replaced index.
 
-```
-init command
-    │
-    ├─► ensureDecompiled()
-    │       ├─► Download Minecraft client jar (download.ts)
-    │       ├─► Remap with Tiny Remapper if needed (remapper.ts; 1.x.y only)
-    │       ├─► Download Vineflower jar (tools.ts; once per cache)
-    │       ├─► Run Vineflower (vineflower.ts)
-    │       └─► Return source directory
-    │
-    ├─► buildIndex()
-    │       ├─► Scan all .java files
-    │       ├─► Parse declarations
-    │       └─► Write per-package JSON under index/<version>/
-    │
-    └─► ensureCallgraph()  (unless --skip-callgraph)
-            └─► see "Callgraph Generation Flow"
-```
+The final Node release's package JSON indexes are legacy input, not a Java
+storage format. Their presence makes status report `needs rebuild`. Users run
+`clean --index -v <version>` and then `init` or `rebuild`; no SQL server or
+external database service is required because H2 is embedded in the JAR.
 
-### Callgraph Generation Flow
+## JSON Boundaries
 
-```
-callgraph command
-    │
-    ├─► ensureJavaCG()
-    │       ├─► Clone java-callgraph2
-    │       ├─► Patch build.gradle for Gradle 9.x
-    │       └─► Build with ./gradlew gen_run_jar
-    │
-    ├─► ensureRemappedJar()
-    │       ├─► Get client.jar + mappings
-    │       └─► Run SpecialSource
-    │
-    ├─► generateCallgraph()
-    │       ├─► Create config files
-    │       ├─► Run java-callgraph2
-    │       └─► Output method_call.txt
-    │
-    └─► parseCallgraphAndCreateDb()
-            ├─► Parse TAB-delimited output
-            ├─► Batch insert into SQLite
-            └─► Create indexes
-```
+The MCP SDK's `McpJsonMapper` is the single JSON abstraction. MCP messages,
+DebugBridge envelopes, metadata, manifests, and JSONL records deserialize into
+typed Java records or bounded generic JSON values at protocol edges. Production
+code does not introduce a second JSON engine.
 
-### Query Flow
+## Packaging And Release
 
-```
-mc_find_refs(className, methodName, direction)
-    │
-    ├─► Check if DB exists
-    │
-    └─► Query SQLite
-            ├─► callers: WHERE callee_class=? AND callee_method=?
-            └─► callees: WHERE caller_class=? AND caller_method=?
-```
+The root `manifest.json` is deterministic Java-generated catalog metadata. It
+contains no server command or Node runtime selector.
 
-## Key Design Decisions
+MCPB is the sole packaging exception. `packaging/mcpb/` owns a minimal
+`bootstrap.cjs`, package metadata, and its packaging dependency. The launcher
+requires Java 26 and starts the bundled JAR without preview features. All npm commands
+in `scripts/build-mcpb.ps1` run with that directory as their working directory;
+nothing there is part of direct JAR execution.
 
-### 1. Per-Package Index Storage
+The release workflow builds the JAR once on Java 26, records its hash, and
+runs that exact artifact on Java 26. The MCPB is packed around the same bytes. A
+read-only verification job admits exactly three publishable assets: JAR,
+checksum, and MCPB. Only the final publishing job receives release write
+permission.
 
-**Problem:** Single JSON file for 50k+ symbols is slow to load.
+## Compatibility Evidence
 
-**Solution:** Split index by package. Only load packages needed for query.
+The frozen 2.2.1 Node release is a read-only differential oracle, identified by
+`contracts/node-oracle.json`. Tests clone it into ignored `.superpowers`
+scratch, build it there, and verify that the source checkout remains unchanged.
+It is never restored into the Java branch.
 
-### 2. SQLite for Callgraph
-
-**Problem:** 400k+ call relationships in memory is expensive.
-
-**Solution:** SQLite with indexes. Queries complete in <10ms.
-
-### 3. Lazy Initialization
-
-**Problem:** Decompilation takes minutes; don't want to block server startup.
-
-**Solution:** Auto-initialize on first tool call. Cache results for subsequent runs.
-
-### 4. Gradle 9.x Compatibility
-
-**Problem:** Java 25 doesn't work with older Gradle versions.
-
-**Solution:** Patch java-callgraph2's build.gradle at runtime to use Gradle 9.3.1 and remove deprecated properties.
-
-### 5. SpecialSource for Callgraph Remapping
-
-**Problem:** java-callgraph2 needs an unobfuscated jar, but for 1.x releases the only jar that survives Vineflower's pipeline is the source tree, not a remapped jar.
-
-**Solution:** When generating the callgraph for a 1.x release, run SpecialSource directly to produce a persistent remapped jar in the cache. The callgraph step then feeds that jar to java-callgraph2.
-
-## Limitations
-
-### Static Analysis Constraints
-
-`mc_find_refs` uses static bytecode analysis which cannot trace:
-
-1. **Reflection** — `Class.forName()`, `Method.invoke()`
-2. **JNI Callbacks** — GLFW callbacks, LWJGL native calls
-3. **Dynamic Proxies** — Generated at runtime
-4. **Lambda Captures** — Method references passed as arguments
-
-### Example
-
-```java
-// This WILL be found:
-minecraft.mouseHandler.setup();
-
-// This will NOT be found:
-GLFW.glfwSetCursorPosCallback(window, (win, x, y) -> {
-    mouseHandler.onMove(win, x, y);  // Called via JNI callback
-});
-```
-
-## Future Improvements
-
-1. **Server-Side Classes** — Include dedicated server classes
-2. **Fabric API Integration** — Index Fabric API alongside vanilla
-3. **Incremental Updates** — Only re-index changed classes
-4. **AST-based Java parser** — Replace the current regex parser in `src/indexer/parser.ts` (see the project improvement plan)
-5. **Pagination on static tools** — Several static tools currently use hard-coded result limits with no `limit` parameter
-
-> Multi-version support shipped in 2026 — see [MULTIVER.md](MULTIVER.md) for the design and current state.
+DebugBridge protocol fixtures are captured from the 2.0.0 baseline. Envelope
+and endpoint compatibility is tested locally; live Minecraft behavior remains
+an acceptance test against a user-launched compatible mod.

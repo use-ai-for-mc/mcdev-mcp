@@ -1,14 +1,18 @@
 ---
 name: minecraft-dev-loop
-description: Test Minecraft mod changes in the running game - rebuild the mod, deploy the jar, restart the client via DebugBridge, and rejoin a server. Use when asked to "test this in game", restart Minecraft after a build, or run the build-deploy-relaunch-rejoin loop. Requires the mcdev-mcp MCP server and the DebugBridge mod with session_control_enabled.
+description: Test Minecraft mod changes in the running game - rebuild the mod, deploy the jar, restart the client via DebugBridge, and rejoin a server. Use when asked to "test this in game", restart Minecraft after a build, or run the build-deploy-relaunch-rejoin loop. Requires the Java mcdev-mcp MCP server and a compatible DebugBridge mod with session_control_enabled.
 ---
 
 # Minecraft mod dev loop
 
-The full procedure lives in the mcdev-mcp server's `mcdev://guides/dev-loop`
-resource — **read it first** (via your MCP resource access, or as
-`resources/dev-loop.md` in the mcdev-mcp package). It is the single source of
-truth; this file is just the trigger and the outline.
+The full procedure lives in the Java server's `mcdev://guides/dev-loop`
+resource. **Read it first** through MCP resource access. It is the single source
+of truth; this file is only the trigger and outline.
+
+The client configuration launches `java -jar <absolute-path-to-release.jar> serve`.
+Java 26 is the minimum runtime. DebugBridge remains a separate,
+Minecraft-version-specific Fabric mod; the server's fixture-backed protocol
+baseline is DebugBridge 2.0.0.
 
 The loop, in short:
 
@@ -16,8 +20,8 @@ The loop, in short:
    otherwise relay the enable instructions it gives and stop.
 2. **Discover once per machine** (while the client runs): `gameDir` from
    `mc_connect` gives the deploy target (`<gameDir>/mods/`), the instance
-   name, and the launcher. Persist the launch command you compose in the
-   project's CLAUDE.md.
+   name, and the launcher. Persist the launch command in the mod project's
+   agent instructions.
 3. **Build & deploy** with the mod repo's build system (your shell).
 4. **Quit** with `mc_quit_client` (waits for the process to be really gone).
 5. **Launch detached** from your shell (`setsid … &` / `open -a` / `start`),

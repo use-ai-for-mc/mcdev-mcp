@@ -1,0 +1,20 @@
+{
+  "id": "req_1",
+  "success": true,
+  "result": {
+    "version": "1.21.11",
+    "mappingStatus": "mojang",
+    "obfuscated": false,
+    "refs": 0,
+    "webUiPort": 9976,
+    "gameDir": "run",
+    "logsDir": "logs",
+    "latestLog": "logs/latest.log",
+    "latestLogExists": true,
+    "debugLog": "logs/debug.log",
+    "debugLogExists": false,
+    "sessionControlEnabled": true
+  },
+  "output": "",
+  "error": null
+}

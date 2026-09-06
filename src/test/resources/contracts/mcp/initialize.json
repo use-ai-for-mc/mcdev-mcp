@@ -1,0 +1,16 @@
+{
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "tools": {},
+      "resources": {}
+    },
+    "serverInfo": {
+      "name": "mcdev-mcp",
+      "version": "2.2.1"
+    },
+    "instructions": "mcdev-mcp gives AI coding agents two surfaces on a Minecraft codebase:\nstatic analysis of decompiled sources (mc_search, mc_get_class/method, mc_find_refs, …)\nand live runtime interaction via the DebugBridge mod (mc_execute, mc_snapshot, …).\n\nWhen you, as a coding agent, are about to write a Python script that talks\nto the Minecraft backend directly (i.e. opening the DebugBridge WebSocket\nyourself instead of using these MCP tools), first read the resource\n`mcdev://guides/python-scripting`. It documents the wire protocol, a minimal\nasyncio client, and the pitfalls — saves you reverse‑engineering the bridge\nfrom the tool implementations.\n\nWhen asked to test mod changes in the running game — rebuild, redeploy,\nrestart the Minecraft client, rejoin a server — first read the resource\n`mcdev://guides/dev-loop`. It covers discovering the launcher/instance from\nthe bridge's gameDir, deploying the jar, and driving mc_quit_client /\nmc_wait_for_bridge / mc_join_server, plus the failure playbook."
+  },
+  "jsonrpc": "2.0",
+  "id": 0
+}

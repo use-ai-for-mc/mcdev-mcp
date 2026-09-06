@@ -1,98 +1,60 @@
-# Vineflower Migration
+# Vineflower Decompilation
 
-Replace DecompilerMC with Vineflower. Eliminate Python/git dependencies.
+mcdev-mcp embeds Vineflower in the shaded release JAR. Decompilation is an
+in-process Java service: users do not install Python, clone a helper project, or
+download a separate decompiler launcher.
 
-**Vineflower:** 1.11.2 — https://github.com/Vineflower/vineflower/releases/download/1.11.2/vineflower-1.11.2.jar
+## Pipeline
 
-**Settings:**
+For `init -v <version>`, `MinecraftDecompiler` coordinates:
+
+1. Fetch Mojang's version manifest and selected version metadata.
+2. Download the client JAR and verify the advertised SHA-1.
+3. Download official client mappings when that version publishes them.
+4. Convert mappings and remap the client with Tiny Remapper.
+5. Run embedded Vineflower against the remapped JAR.
+6. Validate the candidate output and publish the version cache atomically.
+
+Versions without official mappings follow the supported direct-decompilation
+path rather than invoking an alternate external toolchain.
+
+## Ownership
+
+| Java package/class | Responsibility |
+|---|---|
+| `analysis.decompile.VersionManifestClient` | Mojang manifest and download metadata. |
+| `analysis.decompile.DownloadService` | Bounded HTTP downloads and hash verification. |
+| `analysis.decompile.MappingConverter` | Official mapping conversion. |
+| `analysis.decompile.MinecraftRemapper` | Tiny Remapper integration. |
+| `analysis.decompile.MinecraftDecompiler` | Embedded Vineflower invocation, locking, validation, and publication. |
+| `storage.PlatformPaths` | Versioned cache destinations. |
+
+The exact dependency versions are pinned in `gradle/libs.versions.toml` and are
+part of the one release JAR.
+
+## Cache Shape
+
+```text
+<cache-root>/cache/<minecraft-version>/
+|-- client/                              decompiled sources and resources
+|-- jars/<version>_unobfuscated.jar      remapped analysis input
+`-- callgraph/client-remapped.jar         class-file scan input
 ```
--j=8
---decompile-generics=1
---bytecode-source-mapping=1
---remove-synthetic=1
+
+Temporary candidates stay beneath managed scratch directories. Publication
+rejects redirected paths and never replaces a valid cache with an incomplete
+decompilation.
+
+## Commands
+
+```powershell
+java -jar mcdev-mcp-3.0.0.jar init -v 1.21.11
+java -jar mcdev-mcp-3.0.0.jar clean --cache -v 1.21.11
+java -jar mcdev-mcp-3.0.0.jar status -v 1.21.11
 ```
 
----
+`rebuild` operates on already prepared sources; use `init` when decompiled
+sources or remapped inputs are absent.
 
-## New API
-
-### `src/decompiler/tools.ts`
-
-```typescript
-ensureVineflower(progressCb?: ProgressCallback): Promise<string>
-```
-Downloads vineflower.jar to `<cache-dir>/tools/` if missing. Returns path.
-
-### `src/decompiler/download.ts`
-
-```typescript
-// Check if version has hardcoded unobfuscated JAR URL
-hasUnobfuscatedJar(version: string): boolean
-
-// Fetch version manifest from Mojang
-fetchVersionManifest(): Promise<VersionManifest>
-
-// Fetch version info (downloads, etc.)
-fetchVersionInfo(version: string): Promise<VersionInfo>
-
-// Download file with progress
-downloadFile(url: string, dest: string, progressCb?: ProgressCallback, stage?: string): Promise<void>
-
-// Download client JAR (uses hardcoded URL if available, else from manifest)
-downloadClientJar(version: string, dest: string, progressCb?: ProgressCallback): Promise<void>
-```
-
-**Hardcoded unobfuscated JARs:**
-- `1.21.11`: `https://piston-data.mojang.com/v1/objects/4509ee9b65f226be61142d37bf05f8d28b03417b/client.jar`
-
-### `src/decompiler/vineflower.ts`
-
-```typescript
-decompile(vineflowerJar: string, inputJar: string, outputDir: string, progressCb?: ProgressCallback): Promise<void>
-```
-Runs Vineflower with 8 threads. Output goes directly to `outputDir`.
-
-### `src/decompiler/index.ts`
-
-```typescript
-ensureDecompiled(version: string, progressCb?: ProgressCallback): Promise<{
-  minecraftDir: string;
-  fabricDir: string | null;
-  fabricVersion: string | null;
-}>
-```
-Simplified flow:
-1. Check if already decompiled (`isDecompiled()`)
-2. Ensure Vineflower downloaded
-3. Download client JAR (unobfuscated if hardcoded)
-4. Decompile directly to cache dir with Vineflower
-
----
-
-## Remaining Steps
-
-### Step 9: Test
-
-- [ ] Test release version (1.21.11) - has hardcoded unobfuscated JAR
-- [ ] Test dev snapshot (26.x) - downloads obfuscated JAR from manifest
-- [ ] Test re-init when already decompiled (should skip)
-- [ ] Test `clean --all` removes tmp directory
-- [ ] Test `clean -v <version>` removes version cache
-- [ ] Verify MCP tools work (search, get_class, get_method, find_refs)
-
-### Step 10: Update docs
-
-- [ ] Update README.md to remove Python from requirements
-
----
-
-## Directory Structure
-
-```
-<cache-dir>/
-├── cache/<version>/client/    # Final decompiled sources
-├── index/<version>/           # Search indices
-├── tools/
-│   └── vineflower.jar         # Downloaded once
-└── tmp/                       # Cleaned by 'clean --all'
-```
+The obsolete DecompilerMC fork proposal is retained only as design history in
+[`fork.md`](fork.md).

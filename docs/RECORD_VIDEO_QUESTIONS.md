@@ -1,5 +1,8 @@
 # `record_video` — open questions from the DebugBridge (mod) side
 
+> **Pinned Node oracle evidence:** Historical source paths below refer to the commit recorded in
+> [`contracts/node-oracle.json`](../contracts/node-oracle.json), not files in the current Java worktree.
+
 From the implementer side of [RECORD_VIDEO_PROTOCOL.md](./RECORD_VIDEO_PROTOCOL.md). Three small ambiguities surfaced while drafting the mod-side implementation plan; pinning them now keeps both sides honest and avoids a v1.1 round-trip.
 
 Each question has a proposed answer from the mod side — please confirm, push back, or pick a different option.

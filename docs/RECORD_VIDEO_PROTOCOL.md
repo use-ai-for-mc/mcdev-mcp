@@ -1,5 +1,8 @@
 # `record_video` — DebugBridge Protocol Spec
 
+> **Pinned Node oracle evidence:** Historical source paths below refer to the commit recorded in
+> [`contracts/node-oracle.json`](../contracts/node-oracle.json), not files in the current Java worktree.
+
 Adds a new request type to the DebugBridge WebSocket protocol so the mcdev-mcp tool `mc_record_video` can capture short bursts of the Minecraft framebuffer for debugging temporal rendering issues (animation glitches, shader bugs, particles, sub-tick visual artifacts that a single screenshot cannot resolve).
 
 This document is the contract between the MCP server (this repo) and the [DebugBridge mod](https://github.com/use-ai-for-mc/debugbridge). Both sides implement against it.

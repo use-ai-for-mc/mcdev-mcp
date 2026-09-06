@@ -30,9 +30,11 @@ Groovy snippets sent through the `execute` request type.
 
 ## Wire protocol
 
-Source of truth: [`src/tools/runtime/session.ts`](../src/tools/runtime/session.ts) and
-[`src/tools/runtime/types.ts`](../src/tools/runtime/types.ts). Re‑read those if
-anything below looks stale.
+Current source of truth: `dev.mcdevmcp.bridge.BridgeSession`,
+`dev.mcdevmcp.bridge.BridgeClient`, and the typed endpoint/payload records in
+`dev.mcdevmcp.bridge`. The MCP adapters live in
+`dev.mcdevmcp.tools.runtime`. Re-read those Java classes if anything below
+looks stale.
 
 - **Transport:** plain WebSocket, `ws://127.0.0.1:<port>`, no TLS, no auth. The
   bridge only binds to loopback.
@@ -101,14 +103,14 @@ Relaunching a closed client is necessarily external (e.g.
 
 The server may also push frames whose `id` does not match any outstanding
 request (late replies, replies from before a reconnect). Drop them and move
-on — that's what the TypeScript client does.
+on — that is what the Java `BridgeClient` does.
 
 ### Timeouts
 
 `timeoutMs` on an `execute` payload bounds script execution **inside** the JVM.
 You should also enforce a wall‑clock timeout on the WebSocket round‑trip on the
-Python side (the TS client adds a +5s grace and a 5‑minute ceiling). Without
-both, a frozen game can hang your script indefinitely.
+Python side (the Java runtime tools use bounded deadlines and cancellation).
+Without both, a frozen game can hang your script indefinitely.
 
 ## Minimal Python client
 
@@ -217,16 +219,16 @@ if __name__ == "__main__":
 ```
 
 This is intentionally ~70 lines: one socket, one reader task, response
-correlation by id, port scan, timeouts. If you need more (auto‑reconnect,
-session‑info verification across reconnects, etc.) lift the patterns from
-[`src/tools/runtime/session.ts`](../src/tools/runtime/session.ts) — it has all
-been thought through there.
+correlation by id, port scan, timeouts. If you need more (auto-reconnect,
+session-info verification across reconnects, etc.), follow `BridgeSession` and
+`BridgeClient`; they implement port scanning, identity checks, request
+correlation, cancellation, and reconnect behavior.
 
 ## What Groovy you can send
 
-The Groovy environment exposed by the bridge is documented in the
-`mc_execute` tool description in
-[`src/tools/runtime/execute.ts`](../src/tools/runtime/execute.ts). Highlights:
+The Groovy environment exposed by the bridge is documented in the embedded
+`mc_execute` tool metadata at `src/main/resources/mcp/tools.json`; the Java
+handler is `dev.mcdevmcp.tools.runtime.McExecuteTool`. Highlights:
 
 - `mc`, `player`, `level` are pre-bound; the binding persists across calls
   (`x = 5` survives, `def x` is script-local).
@@ -270,8 +272,9 @@ runtime hierarchy); `io.open(...)` → `new File(...)`; `os.time()` →
    it without an SSH tunnel.
 3. **Connection drops on world reload.** Some Minecraft state changes close
    and reopen the WebSocket. Production scripts need reconnect logic. Use the
-   `status` reply's `gameDir` to detect "different game instance now" — see
-   `expectedGameDir` in `session.ts`.
+   `status` reply's `gameDir` to detect "different game instance now". The
+   Java `BridgeSession` and `SessionControlSupport` apply the same identity
+   check while reconnecting.
 4. **`runCommand` and session control are dev-only.** `runCommand` needs both
    this MCP server (`MCDEV_RUN_COMMAND=1`) and the mod (`run_command_enabled`)
    to opt in; `disconnect`/`joinServer`/`quit` need `session_control_enabled`

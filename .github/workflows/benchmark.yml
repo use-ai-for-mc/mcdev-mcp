@@ -1,0 +1,505 @@
+name: Java Runtime Benchmark
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      corpus_manifest:
+        description: Absolute path to the reviewed immutable-corpus manifest on the benchmark runner
+        required: false
+        type: string
+      parallel_gc:
+        description: Run the non-blocking Parallel GC advisory benchmark
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Java 26 corpus qualification and benchmark
+    runs-on: [ self-hosted, linux, x64, mcdev-benchmark ]
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check out the pinned Node oracle independently
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6
+          path: .superpowers/parity/benchmark-node-oracle
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install Temurin 26
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '26'
+      - name: Install the frozen-oracle Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - name: Preserve Java 26 location and identify the physical runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "JAVA_HOME_26=$JAVA_HOME" >> "$GITHUB_ENV"
+          test -s /etc/machine-id
+          machine_id="$({ cat /etc/machine-id; lscpu | sed -n '/^Architecture:/p;/^Model name:/p;/^CPU(s):/p'; } | sha256sum | cut -d' ' -f1)"
+          echo "MACHINE_ID=$machine_id" >> "$GITHUB_ENV"
+          workers="$(nproc)"
+          if (( workers > 4 )); then workers=4; fi
+          if (( workers < 1 )); then workers=1; fi
+          echo "MAX_WORKERS=$workers" >> "$GITHUB_ENV"
+      - name: Build the Java 26 benchmark executable once
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_26"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          ./gradlew clean benchmarkBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
+          mkdir benchmark-runtime
+          unzip -q build/bundles/mcdev-mcp-benchmark-*.zip -d benchmark-runtime
+          cd benchmark-runtime/server
+          sha256sum --check mcdev-mcp-*.jar.sha256
+          echo "BENCHMARK_JAR_SHA256=$(sha256sum mcdev-mcp-*.jar | cut -d' ' -f1)" >> "$GITHUB_ENV"
+      - name: Preserve the benchmark producer bytes for canonical hash verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-java26-producer-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build/bundles/mcdev-mcp-benchmark-*.zip
+            benchmark-runtime/server/mcdev-mcp-*.jar
+            benchmark-runtime/server/mcdev-mcp-*.jar.sha256
+          if-no-files-found: error
+          retention-days: 90
+      - name: Prepare and hash-check Minecraft 1.21.11 and 26.1 once
+        id: corpus
+        shell: bash
+        env:
+          REQUESTED_MANIFEST: ${{ inputs.corpus_manifest }}
+          CONFIGURED_MANIFEST: ${{ vars.MCDEV_BENCHMARK_CORPUS_MANIFEST }}
+        run: |
+          set -euo pipefail
+          manifest="${REQUESTED_MANIFEST:-$CONFIGURED_MANIFEST}"
+          test -n "$manifest" || { echo 'No reviewed corpus manifest is configured'; exit 2; }
+          test -f "$manifest" || { echo "Corpus manifest is unavailable: $manifest"; exit 2; }
+          jq -e '.schemaVersion == 1 and (.corpora | length == 2) and ([.corpora[].minecraftVersion] | sort == ["1.21.11", "26.1"]) and all(.corpora[]; .id == .minecraftVersion)' "$manifest" >/dev/null
+          root="$RUNNER_TEMP/mcdev-mcp-benchmark-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf "$root"
+          mkdir -p "$root/inputs" "$root/node-oracle" "$root/reports"
+          cp "$manifest" "$root/corpus-manifest.json"
+          : > "$root/prepared.tsv"
+          logical_hash() {
+            local source_root="$1"
+            (
+              cd "$source_root"
+              while IFS= read -r -d '' file; do
+                printf '%s\0' "${file#./}"
+                cat "$file"
+                printf '\0'
+              done < <(LC_ALL=C find . -type f -print0 | LC_ALL=C sort -z)
+            ) | sha256sum | cut -d' ' -f1
+          }
+          while IFS= read -r encoded; do
+            entry="$(printf '%s' "$encoded" | base64 --decode)"
+            id="$(jq -er '.id | select(test("^[A-Za-z0-9._-]+$"))' <<<"$entry")"
+            version="$(jq -er '.minecraftVersion' <<<"$entry")"
+            source_root="$(jq -er '.sourceRoot' <<<"$entry")"
+            source_hash="$(jq -er '.sourceLogicalHash | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            remapped_jar="$(jq -er '.remappedJar' <<<"$entry")"
+            remapped_hash="$(jq -er '.remappedJarSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            node_baseline="$(jq -er '.nodeBaseline' <<<"$entry")"
+            node_hash="$(jq -er '.nodeBaselineSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            node_callgraph="$(jq -er '.nodeCallgraph' <<<"$entry")"
+            node_callgraph_hash="$(jq -er '.nodeCallgraphSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            node_generator="$(jq -er '.nodeCallgraphGenerator' <<<"$entry")"
+            node_generator_hash="$(jq -er '.nodeCallgraphGeneratorSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            expectation="$(jq -er '.expectation' <<<"$entry")"
+            expectation_hash="$(jq -er '.expectationSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            classpath_manifest="$(jq -er '.classpathManifest' <<<"$entry")"
+            classpath_hash="$(jq -er '.classpathManifestSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' <<<"$entry")"
+            production_cache="$(jq -er '.productionCacheRoot' <<<"$entry")"
+            test -d "$source_root"
+            test -f "$remapped_jar" && test -f "$node_baseline" && test -f "$node_callgraph" && test -f "$node_generator" && test -f "$expectation"
+            test "$(logical_hash "$source_root")" = "$source_hash"
+            test "$(sha256sum "$remapped_jar" | cut -d' ' -f1)" = "$remapped_hash"
+            test "$(sha256sum "$node_baseline" | cut -d' ' -f1)" = "$node_hash"
+            test "$(sha256sum "$node_callgraph" | cut -d' ' -f1)" = "$node_callgraph_hash"
+            test "$(sha256sum "$node_generator" | cut -d' ' -f1)" = "$node_generator_hash"
+            baseline_callgraph_hash="$(jq -er '.nodeCallgraphSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' "$node_baseline")"
+            baseline_generator_hash="$(jq -er '.nodeCallgraphIdentity.generatorArtifactSha256 | ascii_downcase | select(test("^[0-9a-f]{64}$"))' "$node_baseline")"
+            test "$baseline_callgraph_hash" = "$node_callgraph_hash"
+            test "$baseline_generator_hash" = "$node_generator_hash"
+            test "$(jq -er '.nodeCallgraphSha256' "$expectation")" = "$node_callgraph_hash"
+            test "$(jq -er '.nodeCallgraphIdentity.generatorArtifactSha256' "$expectation")" = "$node_generator_hash"
+            test "$(sha256sum "$expectation" | cut -d' ' -f1)" = "$expectation_hash"
+            test -f "$classpath_manifest"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg version "$version" '.schemaVersion == 1 and .kind == "MOJANG" and .minecraftVersion == $version' "$classpath_manifest" >/dev/null
+            jq -e --arg hash "$classpath_hash" '.schemaVersion == 2 and .classpathManifestSha256 == $hash' "$expectation" >/dev/null
+            classpath_identity="$(jq -er '.classpathIdentity | select(test("^[0-9a-f]{64}$"))' "$expectation")"
+            classpath_root="$(dirname "$(realpath "$classpath_manifest")")"
+            test "$classpath_root" != /
+            test -z "$(find "$classpath_root" -type l -print -quit)"
+            classpath_tree_hash="$(logical_hash "$classpath_root")"
+            test "$(jq -er '.sourceLogicalHash' "$node_baseline")" = "$source_hash"
+            test "$(jq -er '.remappedJarSha256' "$node_baseline")" = "$remapped_hash"
+            destination="$root/inputs/$id"
+            mkdir -p "$destination/source"
+            cp -a --reflink=auto "$source_root/." "$destination/source/"
+            cp "$remapped_jar" "$destination/remapped.jar"
+            cp "$node_baseline" "$root/node-oracle/$id.json"
+            cp "$node_callgraph" "$root/node-oracle/$id-callgraph.db"
+            cp "$expectation" "$destination/expectation.json"
+            mkdir "$destination/classpath"
+            cp -a --reflink=auto "$classpath_root/." "$destination/classpath/"
+            staged_classpath="$destination/classpath/$(basename "$classpath_manifest")"
+            test "$(logical_hash "$destination/classpath")" = "$classpath_tree_hash"
+            test "$(sha256sum "$staged_classpath" | cut -d' ' -f1)" = "$classpath_hash"
+            test "$(logical_hash "$destination/source")" = "$source_hash"
+            test "$(sha256sum "$destination/remapped.jar" | cut -d' ' -f1)" = "$remapped_hash"
+            test "$(sha256sum "$root/node-oracle/$id-callgraph.db" | cut -d' ' -f1)" = "$node_callgraph_hash"
+            jq -n --arg corpus "$id" --arg nodeBaselineSha256 "$node_hash" \
+              --arg nodeCallgraphSha256 "$node_callgraph_hash" --arg generatorArtifactSha256 "$node_generator_hash" \
+              '{corpus: $corpus, nodeBaselineSha256: $nodeBaselineSha256,
+                nodeCallgraphSha256: $nodeCallgraphSha256,
+                generatorArtifactSha256: $generatorArtifactSha256}' \
+              > "$root/node-oracle/$id-provenance.json"
+            chmod -R a-w "$destination" "$root/node-oracle/$id.json" "$root/node-oracle/$id-callgraph.db" "$root/node-oracle/$id-provenance.json"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$id" "$version" "$destination/source" "$destination/remapped.jar" \
+              "$root/node-oracle/$id.json" "$root/node-oracle/$id-callgraph.db" \
+              "$destination/expectation.json" "$production_cache" \
+              "$staged_classpath" "$classpath_hash" "$classpath_identity" \
+              >> "$root/prepared.tsv"
+          done < <(jq -r '.corpora[] | @base64' "$manifest")
+          test "$(wc -l < "$root/prepared.tsv")" -eq 2
+          echo "BENCHMARK_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Materialize the pinned untouched Node oracle in isolated scratch
+        shell: bash
+        run: |
+          set -euo pipefail
+          oracle_commit="$(jq -er '.commit | select(test("^[0-9a-f]{40}$"))' contracts/node-oracle.json)"
+          oracle_source="$GITHUB_WORKSPACE/.superpowers/parity/benchmark-node-oracle"
+          test -f "$oracle_source/.git" || test -d "$oracle_source/.git"
+          test "$(git -C "$oracle_source" rev-parse HEAD)" = "$oracle_commit"
+          test -z "$(git -C "$oracle_source" status --porcelain=v1 --untracked-files=all)"
+          scratch="$BENCHMARK_ROOT/node-oracle/materialized"
+          git clone --no-local --no-hardlinks --no-checkout "$oracle_source" "$scratch"
+          git -C "$scratch" checkout --detach "$oracle_commit"
+          test "$(git -C "$scratch" rev-parse HEAD)" = "$oracle_commit"
+          printf '\n' > "$scratch/.npmrc"
+          (
+            cd "$scratch"
+            export HOME="$BENCHMARK_ROOT/node-oracle/home"
+            export XDG_CACHE_HOME="$BENCHMARK_ROOT/node-oracle/cache"
+            export npm_config_userconfig="$scratch/.npmrc"
+            export npm_config_ignore_scripts=true
+            npm ci --ignore-scripts
+            npm run build
+          )
+          oracle_tree="$(git -C "$scratch" rev-parse HEAD^{tree})"
+          while IFS=$'\t' read -r id version source remapped reviewed_baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
+            capture_script="$BENCHMARK_ROOT/node-oracle/capture-$id.mjs"
+            cat > "$capture_script" <<'NODE_CAPTURE'
+          import { createHash } from 'node:crypto';
+          import { readFile, readdir, writeFile } from 'node:fs/promises';
+          import { isAbsolute, join, relative } from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const [source, version, reviewedBaseline, output, expectedCommit, expectedTree, sourceHash, jarHash, nodeCallgraphSha256, expectedCallgraphPath] = process.argv.slice(2);
+          if (process.env.MCDEV_NODE_ORACLE_COMMIT !== expectedCommit || process.env.MCDEV_NODE_ORACLE_TREE !== expectedTree) throw new Error('Node oracle identity mismatch');
+          const indexer = await import(pathToFileURL(join(process.cwd(), 'dist/indexer/index.js')).href);
+          const callgraph = await import(pathToFileURL(join(process.cwd(), 'dist/callgraph/query.js')).href);
+          const reviewed = JSON.parse(await readFile(reviewedBaseline, 'utf8'));
+          if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(reviewed.nodeCallgraphIdentity?.generator ?? '') || reviewed.nodeCallgraphIdentity?.protocol !== 'method-call-tab-v1' || reviewed.nodeCallgraphIdentity?.databaseSchema !== 'sqlite-calls-v1' || !/^[0-9a-f]{64}$/.test(reviewed.nodeCallgraphIdentity?.generatorArtifactSha256 ?? '')) throw new Error('Invalid reviewed Node callgraph identity');
+          const result = await indexer.buildIndex({ minecraftSourceDir: source, fabricApiSourceDir: null, minecraftVersion: version, fabricApiVersion: null });
+          const indexRoot = join(process.env.XDG_CACHE_HOME, 'mcdev-mcp', 'index', version, 'minecraft');
+          let fields = 0, methods = 0, parameters = 0;
+          const signatures = [];
+          for (const name of (await readdir(indexRoot)).filter(name => name.endsWith('.json')).sort()) {
+            const bytes = await readFile(join(indexRoot, name));
+            const index = JSON.parse(bytes);
+            for (const value of Object.values(index.classes ?? {})) {
+              fields += value.fields?.length ?? 0;
+              methods += value.methods?.length ?? 0;
+              parameters += (value.methods ?? []).reduce((sum, method) => sum + (method.params?.length ?? 0), 0);
+            }
+          }
+          const resolvedCallgraphPath = callgraph.getCallgraphDbPath(version);
+          if (resolvedCallgraphPath !== expectedCallgraphPath) throw new Error(`Node callgraph path mismatch: ${resolvedCallgraphPath}`);
+          const databaseBytes = await readFile(resolvedCallgraphPath);
+          const actualCallgraphSha256 = createHash('sha256').update(databaseBytes).digest('hex');
+          if (actualCallgraphSha256 !== nodeCallgraphSha256) throw new Error('Staged Node callgraph SHA-256 mismatch');
+          const database = await callgraph.openDb(version);
+          const scalar = sql => database.exec(sql)[0]?.values[0]?.[0] ?? 0;
+          const callgraphCounts = {
+            classes: scalar('SELECT COUNT(*) FROM (SELECT caller_class AS class_name FROM calls UNION SELECT callee_class FROM calls)'),
+            methods: scalar("SELECT COUNT(*) FROM (SELECT caller_class || '#' || caller_method AS method_name FROM calls UNION SELECT callee_class || '#' || callee_method FROM calls)"),
+            edges: scalar('SELECT COUNT(*) FROM calls'),
+          };
+          const nullableString = (chunks, value) => {
+            if (value === null || value === undefined) { chunks.push(Buffer.of(0)); return; }
+            const bytes = Buffer.from(String(value), 'utf8');
+            const length = Buffer.alloc(4); length.writeUInt32BE(bytes.length);
+            chunks.push(Buffer.of(1), length, bytes);
+          };
+          const nullableInteger = (chunks, value) => {
+            if (value === null || value === undefined) { chunks.push(Buffer.of(0)); return; }
+            if (!Number.isSafeInteger(value) || value < -2147483648 || value > 2147483647) throw new Error(`Projection integer is outside int32: ${value}`);
+            const bytes = Buffer.alloc(4); bytes.writeInt32BE(value);
+            chunks.push(Buffer.of(2), bytes);
+          };
+          const list = (chunks, values, writer) => {
+            const actual = values ?? [];
+            const length = Buffer.alloc(4); length.writeUInt32BE(actual.length);
+            chunks.push(Buffer.of(3), length);
+            for (const value of actual) writer(chunks, value);
+          };
+          const parameter = (chunks, value) => {
+            chunks.push(Buffer.of(5)); nullableString(chunks, value.name); nullableString(chunks, value.type);
+          };
+          const row = (chunks, value) => {
+            chunks.push(Buffer.of(4));
+            nullableString(chunks, value.symbolKind);
+            nullableString(chunks, value.superclassBinaryName);
+            list(chunks, value.interfaceBinaryNames, nullableString);
+            nullableString(chunks, value.sourcePath);
+            nullableString(chunks, value.memberName);
+            nullableString(chunks, value.memberType);
+            nullableString(chunks, value.returnType);
+            list(chunks, value.parameters, parameter);
+            list(chunks, value.modifiers, nullableString);
+            nullableInteger(chunks, value.lineStart);
+            nullableInteger(chunks, value.lineEnd);
+            nullableString(chunks, value.referenceClassName);
+            nullableString(chunks, value.referenceMethodName);
+            nullableString(chunks, value.referenceDescriptor);
+            nullableInteger(chunks, value.referenceLineNumber);
+          };
+          const signature = (kind, key, rows) => {
+            const chunks = [Buffer.of(6)];
+            nullableString(chunks, 'mcdev-mcp-corpus-probe-v1');
+            nullableString(chunks, kind);
+            nullableString(chunks, key);
+            list(chunks, rows, row);
+            return createHash('sha256').update(Buffer.concat(chunks)).digest('hex');
+          };
+          const PROBE_REFERENCE_LIMIT = 100;
+          const emptyRow = () => ({ symbolKind: null, superclassBinaryName: null, interfaceBinaryNames: [], sourcePath: null, memberName: null, memberType: null, returnType: null, parameters: [], modifiers: [], lineStart: null, lineEnd: null, referenceClassName: null, referenceMethodName: null, referenceDescriptor: null, referenceLineNumber: null });
+          const vectorRow = { ...emptyRow(), memberName: 'méthod\n"', returnType: 'void', parameters: [{ name: 'π', type: 'java.lang.String[]' }], modifiers: ['public', 'static'], lineStart: 7, lineEnd: 9 };
+          if (signature('SYMBOL_METHOD', 'sample.É#méthod\n"', [vectorRow]) !== '484633761215a973adcddf71bbe833a9b0e223db54428e6dbcf93f597532458e') throw new Error('Node probe projection test vector mismatch');
+          const modifiers = values => (values ?? []).map(value => String(value).toLowerCase()).sort();
+          const relativeSourcePath = absolute => {
+            if (!isAbsolute(absolute)) throw new Error(`Node index source path is not absolute: ${absolute}`);
+            const value = relative(source, absolute).replaceAll('\\', '/');
+            if (!value || isAbsolute(value) || value === '..' || value.startsWith('../')) throw new Error(`Node index source path is outside corpus root: ${absolute}`);
+            return value;
+          };
+          const classRow = classInfo => classInfo == null ? [] : [{ ...emptyRow(), symbolKind: classInfo.kind ?? null, superclassBinaryName: classInfo.super ?? null, interfaceBinaryNames: [...(classInfo.interfaces ?? [])], sourcePath: relativeSourcePath(classInfo.sourcePath) }];
+          const fieldRows = (classInfo, member) => (classInfo?.fields ?? []).filter(field => field.name === member).map(field => ({ ...emptyRow(), memberName: field.name, memberType: field.type ?? null, modifiers: modifiers(field.modifiers) }));
+          const methodRows = (classInfo, member) => (classInfo?.methods ?? []).filter(method => method.name === member).map(method => ({ ...emptyRow(), memberName: method.name, returnType: method.returnType ?? null, parameters: (method.params ?? []).map(value => ({ name: value.name ?? null, type: value.type ?? null })), modifiers: modifiers(method.modifiers), lineStart: method.lineStart ?? null, lineEnd: method.lineEnd ?? null }));
+          const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+          const referenceRows = references => {
+            if (references.length > PROBE_REFERENCE_LIMIT) throw new Error(`Frozen Node reference query exceeded LIMIT ${PROBE_REFERENCE_LIMIT}`);
+            return references.map(reference => ({ ...emptyRow(), referenceClassName: reference.className ?? null, referenceMethodName: reference.methodName ?? null, referenceDescriptor: reference.descriptor ?? '', referenceLineNumber: reference.lineNumber ?? null })).sort((left, right) => compareText(left.referenceClassName, right.referenceClassName) || compareText(left.referenceMethodName, right.referenceMethodName) || compareText(left.referenceDescriptor, right.referenceDescriptor) || (left.referenceLineNumber == null ? right.referenceLineNumber == null ? 0 : -1 : right.referenceLineNumber == null ? 1 : left.referenceLineNumber - right.referenceLineNumber));
+          };
+          const referenceCount = (kind, className, methodName) => {
+            const target = kind === 'CALLERS' ? ['callee_class', 'callee_method'] : ['caller_class', 'caller_method'];
+            const statement = database.prepare(`SELECT COUNT(*) AS count FROM calls WHERE ${target[0]} = ? AND ${target[1]} = ?`);
+            try {
+              statement.bind([className, methodName]);
+              if (!statement.step()) throw new Error('Node reference count query returned no row');
+              const count = statement.getAsObject().count;
+              if (!Number.isSafeInteger(count) || count < 0) throw new Error(`Invalid Node reference count: ${count}`);
+              return count;
+            } finally {
+              statement.free();
+            }
+          };
+          for (const probe of reviewed.probes) {
+            const separator = probe.key.indexOf('#');
+            const className = separator < 0 ? probe.key : probe.key.slice(0, separator);
+            const member = separator < 0 ? '' : probe.key.slice(separator + 1);
+            const packageName = className.includes('.') ? className.slice(0, className.lastIndexOf('.')) : '';
+            const simpleName = className.slice(className.lastIndexOf('.') + 1);
+            const packageIndex = indexer.loadPackageIndex('minecraft', packageName, version);
+            const classInfo = packageIndex?.classes?.[simpleName] ?? packageIndex?.classes?.[className] ?? null;
+            let rows;
+            if (probe.kind === 'SYMBOL_CLASS') rows = classRow(classInfo);
+            else if (probe.kind === 'SYMBOL_FIELD') rows = fieldRows(classInfo, member);
+            else if (probe.kind === 'SYMBOL_METHOD') rows = methodRows(classInfo, member);
+            else if (probe.kind === 'CALLERS' || probe.kind === 'CALLEES') {
+              const count = referenceCount(probe.kind, className, member);
+              if (count > PROBE_REFERENCE_LIMIT) throw new Error(`Node ${probe.kind} probe exceeds the complete ${PROBE_REFERENCE_LIMIT}-row comparison bound: ${probe.key}`);
+              rows = referenceRows(probe.kind === 'CALLERS'
+                ? await callgraph.findCallers(version, className, member)
+                : await callgraph.findCallees(version, className, member));
+              if (rows.length !== count) throw new Error(`Node ${probe.kind} query count mismatch: ${probe.key}`);
+            }
+            else throw new Error(`Unknown probe kind ${probe.kind}`);
+            signatures.push({ kind: probe.kind, key: probe.key, signature: signature(probe.kind, probe.key, rows) });
+          }
+          callgraph.closeDb();
+          await writeFile(output, JSON.stringify({ schemaVersion: 1, minecraftVersion: version, sourceLogicalHash: sourceHash, remappedJarSha256: jarHash, nodeCallgraphSha256: actualCallgraphSha256, nodeCallgraphPath: resolvedCallgraphPath, nodeCallgraphIdentity: reviewed.nodeCallgraphIdentity, oracleIdentity: { commit: expectedCommit, treeHash: expectedTree }, indexCounts: { packages: result.minecraftPackages.length, types: result.totalClasses, fields, methods, parameters }, callgraphCounts, probes: signatures }));
+          NODE_CAPTURE
+            captured="$BENCHMARK_ROOT/node-oracle/$id-captured.json"
+            (
+              cd "$scratch"
+              export HOME="$BENCHMARK_ROOT/node-oracle/home-$id"
+              export XDG_CACHE_HOME="$BENCHMARK_ROOT/node-oracle/cache-$id"
+              export MCDEV_NODE_ORACLE_COMMIT="$oracle_commit"
+              export MCDEV_NODE_ORACLE_TREE="$oracle_tree"
+              callgraph_directory="$XDG_CACHE_HOME/mcdev-mcp/cache/$version/callgraph"
+              mkdir -p "$callgraph_directory"
+              staged_callgraph="$callgraph_directory/callgraph.db"
+              cp "$node_callgraph" "$staged_callgraph"
+              test "$(sha256sum "$staged_callgraph" | cut -d' ' -f1)" = "$(jq -er '.nodeCallgraphSha256' "$reviewed_baseline")"
+              node "$capture_script" "$source" "$version" "$reviewed_baseline" "$captured" \
+                "$oracle_commit" "$oracle_tree" \
+                "$(jq -er '.sourceLogicalHash' "$reviewed_baseline")" \
+                "$(jq -er '.remappedJarSha256' "$reviewed_baseline")" \
+                "$(sha256sum "$node_callgraph" | cut -d' ' -f1)" \
+                "$staged_callgraph"
+            )
+            jq -e --arg commit "$oracle_commit" --arg treeHash "$oracle_tree" \
+              --arg version "$version" --slurpfile captured "$captured" \
+              '(.schemaVersion == 1) and (.minecraftVersion == $version) and
+               (.oracleIdentity.commit == $commit) and (.oracleIdentity.treeHash == $treeHash) and
+               (del(.nodeCallgraphPath) == ($captured[0] | del(.nodeCallgraphPath)))' \
+               "$reviewed_baseline" >/dev/null
+            test "$(jq -er '.nodeCallgraphPath' "$captured")" = "$BENCHMARK_ROOT/node-oracle/cache-$id/mcdev-mcp/cache/$version/callgraph/callgraph.db"
+            test "$(jq -er '.nodeCallgraphSha256' "$reviewed_baseline")" = "$(sha256sum "$node_callgraph" | cut -d' ' -f1)"
+          done < "$BENCHMARK_ROOT/prepared.tsv"
+          test -z "$(git -C "$oracle_source" status --porcelain=v1 --untracked-files=all)"
+      - name: Qualify complete corpora on Java 26 and worker counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
+          test -n "$jar"
+          classpath="benchmark-runtime/harness:$jar"
+          worker_counts=(1)
+          if (( MAX_WORKERS > 1 )); then worker_counts+=("$MAX_WORKERS"); fi
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
+            hashes=()
+            for feature in 26; do
+              java_home="$JAVA_HOME_26"
+              for workers in "${worker_counts[@]}"; do
+                output="$BENCHMARK_ROOT/reports/qualification/$id/java$feature-workers$workers"
+                mkdir -p "$output"
+                test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+                "$java_home/bin/java" -Xmx4g -cp "$classpath" \
+                  dev.mcdevmcp.benchmark.CorpusQualificationMain \
+                  --minecraft-version "$version" --source-root "$source" \
+                  --remapped-jar "$remapped" --node-baseline "$baseline" \
+                  --classpath-manifest "$classpath_manifest" \
+                  --expectation "$expectation" --output-root "$output" \
+                  --production-cache-root "$production_cache" --workers "$workers"
+                report="$output/corpus-qualification.json"
+                test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+                jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+                  --slurpfile manifest "$classpath_manifest" \
+                  '.schemaVersion == 2 and .qualified == true and
+                   .classpath.kind == "MOJANG" and .classpath.identity == $identity and
+                   .classpath.manifestSha256 == $hash and
+                   .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+                   .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
+                hashes+=("$(jq -cer '{symbolLogicalHash, callgraphLogicalIdentity, callgraphLogicalHash, classpath}' "$report")")
+              done
+            done
+            test "$(printf '%s\n' "${hashes[@]}" | sort -u | wc -l)" -eq 1
+          done < "$BENCHMARK_ROOT/prepared.tsv"
+      - name: Run the blocking Java 26 default-G1 benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
+          classpath="benchmark-runtime/harness:$jar"
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
+            output="$BENCHMARK_ROOT/reports/g1/$id/java26"
+            mkdir -p "$output"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+              dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
+              --minecraft-version "$version" --source-root "$source" \
+              --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --classpath-manifest "$classpath_manifest" \
+              --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26" --gc G1
+            report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
+            test -n "$report"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+              --slurpfile manifest "$classpath_manifest" \
+              '.schemaVersion == 2 and .classpath.kind == "MOJANG" and
+               .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
+               .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+               .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
+          done < "$BENCHMARK_ROOT/prepared.tsv"
+          printf '%s\n' "$MACHINE_ID" > "$BENCHMARK_ROOT/reports/g1/machine-id.txt"
+      - name: Run manual Parallel-GC advisory
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.parallel_gc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find benchmark-runtime/server -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f -print -quit)"
+          classpath="benchmark-runtime/harness:$jar"
+          while IFS=$'\t' read -r id version source remapped baseline node_callgraph expectation production_cache classpath_manifest classpath_hash classpath_identity; do
+            output="$BENCHMARK_ROOT/reports/parallel-gc/$id/java26"
+            mkdir -p "$output"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            "$JAVA_HOME_26/bin/java" -cp "$classpath" \
+              dev.mcdevmcp.benchmark.AnalysisBenchmarkMain \
+              --minecraft-version "$version" --source-root "$source" \
+              --remapped-jar "$remapped" --server-jar "$jar" --output-root "$output" \
+              --classpath-manifest "$classpath_manifest" \
+              --production-cache-root "$production_cache" --workers "$MAX_WORKERS" \
+              --machine-id "$MACHINE_ID" --run-id "$GITHUB_RUN_NUMBER-$id-java26-parallel" --gc PARALLEL
+            report="$(find "$output" -maxdepth 1 -name 'benchmark-*.json' -type f -print -quit)"
+            test -n "$report"
+            test "$(sha256sum "$classpath_manifest" | cut -d' ' -f1)" = "$classpath_hash"
+            jq -e --arg identity "$classpath_identity" --arg hash "$classpath_hash" \
+              --slurpfile manifest "$classpath_manifest" \
+              '.schemaVersion == 2 and .classpath.kind == "MOJANG" and
+               .classpath.identity == $identity and .classpath.manifestSha256 == $hash and
+               .classpath.metadataSha256 == $manifest[0].metadataSha256 and
+               .classpath.artifacts == $manifest[0].artifacts' "$report" >/dev/null
+            test "$(jq -er '.runtime.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.result.javaFeature' "$report")" -eq 26
+            test "$(jq -er '.serverJarSha256' "$report")" = "$BENCHMARK_JAR_SHA256"
+          done < "$BENCHMARK_ROOT/prepared.tsv"
+      - name: Summarize manual advisory results
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          {
+            printf '### Manual advisory benchmark\n\n'
+            printf 'This run is advisory only; Java 26 remains the sole release runtime.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: benchmark-raw-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.BENCHMARK_ROOT }}/corpus-manifest.json
+            ${{ env.BENCHMARK_ROOT }}/inputs/*/classpath/**/*.json
+            ${{ env.BENCHMARK_ROOT }}/node-oracle/*.json
+            ${{ env.BENCHMARK_ROOT }}/reports/**/*.json
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-java26
+          path: ${{ env.BENCHMARK_ROOT }}/reports/**
+          if-no-files-found: error
+          retention-days: 90

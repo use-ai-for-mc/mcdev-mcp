@@ -2,170 +2,193 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
-    tags: ['v*']
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  build-java26:
+    name: Build once on Java 26
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: gradle
+      - name: Test and produce the Java 26 provenance payload
+        run: >-
+          ./gradlew clean test check shadowJar runtimeTestBundle benchmarkBundle
+          java26ArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
+      - name: Verify staged JAR checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/artifacts/java26
+          test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -name 'mcdev-mcp-*.jar.sha256' -type f | wc -l)" -eq 1
+          sha256sum --check mcdev-mcp-*.jar.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: java26-build
+          path: build/artifacts/java26/*
+          if-no-files-found: error
+          retention-days: 7
 
+  parity:
+    name: Frozen Node parity
+    needs: build-java26
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: gradle
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java26-build
+          path: downloaded
+      - name: Stage the checksum-verified producer JAR for parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          test -n "$version"
+          (cd downloaded && sha256sum --check "mcdev-mcp-$version.jar.sha256")
+          mkdir -p build/libs
+          cp "downloaded/mcdev-mcp-$version.jar" "downloaded/mcdev-mcp-$version.jar.sha256" build/libs/
+      - name: Materialize the immutable master oracle worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          oracle_commit='7b98bdb4a1d885d588cd141d8eb21e3c5c18b2b6'
+          oracle_worktree="$RUNNER_TEMP/mcdev-mcp-node-oracle"
+          git checkout --detach "$GITHUB_SHA"
+          git branch -f master "$oracle_commit"
+          git worktree add "$oracle_worktree" master
+          test "$(git -C "$oracle_worktree" rev-parse HEAD)" = "$oracle_commit"
+          test -z "$(git -C "$oracle_worktree" status --porcelain=v1 --untracked-files=all)"
+      - name: Compare the Java CLI and complete MCP surface with the frozen Node server
+        run: ./gradlew parityTest --rerun-tasks -x test -x shadowJar --no-configuration-cache --console=plain
+      - name: Verify parity preserved the producer JAR
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          cd build/libs
+          sha256sum --check "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar.sha256"
+          cmp "mcdev-mcp-$version.jar" "$GITHUB_WORKSPACE/downloaded/mcdev-mcp-$version.jar"
+
+  runtime-matrix:
+    name: Exact JAR on ${{ matrix.os }} Java ${{ matrix.java }}
+    needs: build-java26
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        # sql.js (WASM) works on Node 14+, so we cover the active LTS line.
-        # The lower bound matches package.json engines (>=20.0.0) — bumped
-        # because commander@14 and other modern deps require Node >=20.
-        node-version: [20.x, 22.x, 24.x]
-
+        include:
+          - os: ubuntu-latest
+            java: '26'
+          - os: macos-latest
+            java: '26'
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          node-version: ${{ matrix.node-version }}
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build TypeScript
-        run: npm run build
-
-      - name: Run tests
-        run: npm test
-
-      - name: Verify CLI
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java26-build
+          path: downloaded
+      - name: Verify and execute the compiled runtime harness
+        shell: bash
         run: |
-          node dist/cli.js --help
-          node dist/cli.js status || true
+          set -euo pipefail
+          shopt -s nullglob
+          bundles=(downloaded/mcdev-mcp-runtime-test-*.zip)
+          test "${#bundles[@]}" -eq 1
+          rm -rf runtime
+          mkdir runtime
+          unzip -q "${bundles[0]}" -d runtime
+          cd runtime/server
+          checksums=(mcdev-mcp-*.jar.sha256)
+          test "${#checksums[@]}" -eq 1
+          recorded="$(awk '{print $1}' "${checksums[0]}")"
+          jars=(mcdev-mcp-*.jar)
+          test "${#jars[@]}" -eq 1
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual="$(sha256sum "${jars[0]}" | awk '{print $1}')"
+          else
+            actual="$(shasum -a 256 "${jars[0]}" | awk '{print $1}')"
+          fi
+          test "$actual" = "$recorded"
+          cd ../..
+          java --illegal-native-access=deny \
+            -cp "runtime/harness:runtime/server/${jars[0]#./}" \
+            dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
+            "runtime/server/${jars[0]#./}"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
-        if: matrix.node-version == '22.x'
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
-
-  lint:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22.x'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Check TypeScript
-        run: npx tsc --noEmit
-
-  # Sanity-check that the pushed tag matches the versions baked into
-  # package.json and manifest.json. Cheap fail-fast before the matrix
-  # runs three platform builds with a wrong filename, or npm publishes
-  # a version that disagrees with the tag.
-  verify-version:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify package.json + manifest.json match tag
-        run: |
-          PKG="$(node -p 'require("./package.json").version')"
-          MAN="$(node -p 'require("./manifest.json").version')"
-          TAG="${GITHUB_REF_NAME#v}"
-          [ "$PKG" = "$TAG" ] || { echo "package.json $PKG != tag $TAG"; exit 1; }
-          [ "$MAN" = "$TAG" ] || { echo "manifest.json $MAN != tag $TAG"; exit 1; }
-
-  # Build the MCPB (Claude Desktop extension) bundle. Runs on tag pushes
-  # only — wasted CI minutes otherwise.
-  #
-  # The bundle is universal: sql.js (WASM) replaced the old native sqlite
-  # bindings, so there's no per-platform binary in the output. One run on
-  # ubuntu-latest produces a .mcpb that works on macOS (arm64/x86_64),
-  # Linux, and Windows. See scripts/build-mcpb.sh for the rationale.
   mcpb:
-    needs: [build, lint, verify-version]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-
+    name: Pack exact Java 26 JAR as MCPB
+    needs: build-java26
+    runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          node-version: '22.x'
-
-      - name: Install dependencies
-        run: npm install --no-fund --no-audit
-
-      - name: Build MCPB bundle
-        run: bash scripts/build-mcpb.sh
-
-      - name: Upload MCPB artifact
-        uses: actions/upload-artifact@v7
+          distribution: temurin
+          java-version: '26'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: packaging/mcpb/package-lock.json
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: java26-build
+          path: downloaded
+      - name: Pack, extract, and smoke the downloaded bytes
+        shell: pwsh
+        run: |
+          $jar = @(Get-ChildItem downloaded\mcdev-mcp-*.jar)
+          $checksum = @(Get-ChildItem downloaded\mcdev-mcp-*.jar.sha256)
+          if ($jar.Count -ne 1 -or $checksum.Count -ne 1) { throw "Expected one JAR and checksum" }
+          .\scripts\build-mcpb.ps1 -SkipBuild -Jar $jar[0].FullName -Checksum $checksum[0].FullName -Manifest downloaded\manifest.json
+          Copy-Item $jar[0].FullName build\distributions\$($jar[0].Name)
+          Copy-Item $checksum[0].FullName build\distributions\$($checksum[0].Name)
+          $version = (Get-Content gradle.properties | Where-Object { $_ -like 'version=*' }).Substring(8)
+          .\scripts\verify-release-assets.ps1 -DryRun -Version $version -Directory build\distributions
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mcpb
-          path: dist-mcpb/*.mcpb
-          retention-days: 7
+          path: build/distributions/*.mcpb
+          if-no-files-found: error
 
-  # Tag-driven release: publishes to npm via OIDC (npm Trusted Publishing —
-  # no long-lived token, configured on npmjs.com under the package's
-  # publishing access) and creates a GitHub Release with the universal MCPB
-  # bundle attached. Triggered by `git push --tags` of a `v*` tag.
-  release:
-    needs: [build, lint, verify-version, mcpb]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write   # needed by softprops/action-gh-release
-      id-token: write   # OIDC for npm Trusted Publishing + provenance
-
+  conformance:
+    name: Official MCP conformance 0.1.16
+    runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          # Trusted publishing requires npm CLI >= 11.5.1 for the OIDC
-          # handshake. Node 22 ships npm 10 and fails with a misleading
-          # 404 ("'<pkg>@<version>' is not in this registry"); Node 24
-          # ships npm 11.x.
-          node-version: '24.x'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-
-      - name: Publish to npm
-        # Trusted Publishing: the OIDC token minted via `id-token: write` is
-        # exchanged for a short-lived npm publish credential, scoped to this
-        # repo+workflow. No NPM_TOKEN secret needed. `--provenance` records a
-        # signed attestation that this version was built from this workflow.
-        run: npm publish --provenance
-
-      - name: Download MCPB artifact
-        uses: actions/download-artifact@v8
+          distribution: temurin
+          java-version: '26'
+          cache: gradle
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          name: mcpb
-          path: dist-mcpb
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: dist-mcpb/*.mcpb
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          node-version: '24'
+      - name: Run pinned official MCP conformance
+        shell: pwsh
+        run: .\scripts\run-conformance.ps1

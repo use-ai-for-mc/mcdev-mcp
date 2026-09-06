@@ -1,0 +1,16 @@
+{
+  "release": "v2.0.0",
+  "commit": "72902e65c4edd1e2147dc6ac3f8182abd56711a1",
+  "requestShape": [
+    "id",
+    "type",
+    "payload"
+  ],
+  "responseShape": [
+    "id",
+    "success",
+    "result",
+    "output",
+    "error"
+  ]
+}

@@ -1,0 +1,18 @@
+Usage: mcdev-mcp [options] [command]
+
+MCP server for Minecraft mod development
+
+Options:
+  -V, --version        output the version number
+  -h, --help           display help for command
+
+Commands:
+  serve                Start the MCP server over stdio (used by MCP clients, not
+                       humans)
+  init [options]       Download, decompile, index Minecraft sources, and
+                       generate callgraph
+  callgraph [options]  Generate callgraph database for finding method references
+  rebuild [options]    Rebuild the symbol index from cached sources
+  status [options]     Show current status of all cached Minecraft versions
+  clean [options]      Remove cached data and index
+  help [command]       display help for command

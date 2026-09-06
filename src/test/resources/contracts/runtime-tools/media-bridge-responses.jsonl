@@ -1,0 +1,19 @@
+{"label":"screenshot-success","success":true,"resultPresent":true,"result":{"path":"C:\\Game\\shot.jpg","width":1920,"height":1080,"sizeBytes":1536,"mimeType":"image/jpeg","futureField":true}}
+{"label":"screenshot-floating-integral-token","success":true,"resultPresent":true,"result":{"path":"C:\\Game\\shot.jpg","width":1920,"height":1080,"sizeBytes":1536,"mimeType":"image/jpeg"}}
+{"label":"screenshot-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"screenshot-missing-result","success":true,"resultPresent":false}
+{"label":"screenshot-wrong-primitive","success":true,"resultPresent":true,"result":{"path":42,"width":"wide","height":1080,"sizeBytes":null,"mimeType":"image/jpeg"}}
+{"label":"record-grid-tagged-fixed-seconds","success":true,"resultPresent":true,"result":{"storage":"temp","directory":"C:\\Game\\debugbridge-recordings\\req_5","frameWidth":320,"frameHeight":180,"frameCount":4,"captureMs":200,"intervalMs":50,"mimeType":"image/jpeg","dropped":0,"mode":"grid","path":"C:\\Game\\grid.jpg","width":640,"height":360,"sizeBytes":2560,"gridCols":2,"gridRows":2}}
+{"label":"record-frames-dropped","success":true,"resultPresent":true,"result":{"storage":"temp","directory":"C:\\Game\\debugbridge-recordings\\req_6","frameWidth":320,"frameHeight":180,"frameCount":3,"captureMs":54,"intervalMs":17.2,"mimeType":"image/jpeg","dropped":2,"mode":"frames","paths":["C:\\Game\\frame-1.jpg","C:\\Game\\frame-2.jpg","C:\\Game\\frame-3.jpg"],"sizeBytes":1536}}
+{"label":"record-unknown-mode","success":true,"resultPresent":true,"result":{"mode":"mosaic"}}
+{"label":"record-malformed-paths","success":true,"resultPresent":true,"result":{"mode":"frames","paths":["C:\\Game\\frame-1.jpg",7],"frameWidth":320,"frameHeight":180,"frameCount":2,"captureMs":34,"intervalMs":17,"mimeType":"image/jpeg","sizeBytes":1024,"dropped":0}}
+{"label":"record-declared-error","success":false,"resultPresent":false,"error":"recording failed"}
+{"label":"item-texture-success","success":true,"resultPresent":true,"result":{"base64Png":"iVBORw0KGgo=","width":16,"height":16,"spriteName":"minecraft:item/diamond","futureField":"retained"}}
+{"label":"item-texture-wrong-primitive","success":true,"resultPresent":true,"result":{"base64Png":7,"width":"16","height":null,"spriteName":false}}
+{"label":"entity-item-texture-success","success":true,"resultPresent":true,"result":{"base64Png":"QUFBPQ==","width":32,"height":32,"spriteName":"minecraft:item/iron_sword"}}
+{"label":"item-texture-by-id-success","success":true,"resultPresent":true,"result":{"base64Png":"QkJCPQ==","width":16,"height":16,"spriteName":"minecraft:item/diamond"}}
+{"label":"entity-glow-success","success":true,"resultPresent":true,"result":{"entityId":7,"glow":true}}
+{"label":"entity-glow-declared-error","success":false,"resultPresent":false,"error":"entity gone"}
+{"label":"block-glow-success","success":true,"resultPresent":true,"result":{"x":1,"y":64,"z":-2,"glow":true}}
+{"label":"clear-block-glow-success","success":true,"resultPresent":true,"result":{"cleared":true}}
+{"label":"clear-block-glow-missing-result","success":true,"resultPresent":false}

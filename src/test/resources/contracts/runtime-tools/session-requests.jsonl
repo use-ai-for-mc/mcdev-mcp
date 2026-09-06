@@ -1,0 +1,6 @@
+{"label":"join_no_wait","tool":"mc_join_server","arguments":{"address":"localhost:25565","wait":false},"endpoint":"joinServer","payload":{"address":"localhost:25565","acceptResourcePacks":true}}
+{"label":"join_missing_result","tool":"mc_join_server","arguments":{"address":"example.test","acceptResourcePacks":false,"wait":false},"endpoint":"joinServer","payload":{"address":"example.test","acceptResourcePacks":false}}
+{"label":"leave_success","tool":"mc_leave_server","arguments":{},"endpoint":"disconnect","payload":{}}
+{"label":"leave_missing_result","tool":"mc_leave_server","arguments":{},"endpoint":"disconnect","payload":{}}
+{"label":"command_strips_one_slash","tool":"mc_run_command","arguments":{"command":"/give @s minecraft:stone"},"endpoint":"runCommand","payload":{"command":"give @s minecraft:stone"}}
+{"label":"command_error","tool":"mc_run_command","arguments":{"command":"say hi"},"endpoint":"runCommand","payload":{"command":"say hi"}}

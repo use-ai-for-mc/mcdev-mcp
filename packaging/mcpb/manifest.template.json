@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcdev-mcp",
+  "display_name": "Minecraft Development MCP",
+  "description": "Minecraft development tools backed by the mcdev-mcp Java server.",
+  "author": {
+    "name": "mcdev-mcp contributors"
+  },
+  "version": "",
+  "tools": [],
+  "user_config": {
+    "script_logs": {
+      "type": "string",
+      "title": "Script log directory",
+      "description": "Optional directory containing JSON Lines script logs.",
+      "required": false
+    },
+    "run_command": {
+      "type": "boolean",
+      "title": "Enable game commands",
+      "description": "Allow mc_run_command to send slash commands through DebugBridge.",
+      "default": false,
+      "required": false
+    },
+    "debug_log": {
+      "type": "string",
+      "title": "Debug log",
+      "description": "Optional mcdev-mcp debug-log path, or on/off.",
+      "required": false
+    },
+    "index_threads": {
+      "type": "number",
+      "title": "Indexer workers",
+      "description": "Optional maximum number of Java source-indexing workers.",
+      "required": false
+    },
+    "debugbridge_port": {
+      "type": "number",
+      "title": "DebugBridge port",
+      "description": "Optional DebugBridge server port.",
+      "required": false
+    }
+  }
+}
