@@ -139,6 +139,11 @@ with preview features over standard streams:
   the JAR. The trainer serves one scripted session in-process, ends the
   recording and publishes the cache atomically.
 
+The task builds the image aside and renames it into place. Windows refuses to
+rename a directory a running server holds files in, so that build fails and the
+old image stays whole; deleting it first would remove only the unlocked files
+and leave the server unable to start again.
+
 The `mcpbBundle` task packs that image as an MCPB bundle. The bundle's manifest
 is the one generated for the operating system it is built on: a `binary` server
 whose command is the image's launcher, declared compatible with that system

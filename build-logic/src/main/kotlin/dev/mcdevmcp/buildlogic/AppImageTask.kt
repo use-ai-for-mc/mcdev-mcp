@@ -1,6 +1,7 @@
 package dev.mcdevmcp.buildlogic
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFileProperty
@@ -15,11 +16,15 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 
 /**
  * Wraps the application JAR and its runtime in a jpackage application image: a directory with a
- * native launcher that needs no installed JDK and no command-line flags.
+ * native launcher that needs no installed JDK and no command-line flags. The image is built aside
+ * and replaces the old one only when finished, so a failed build leaves a working image in place.
  */
 abstract class AppImageTask @Inject constructor(
     private val execOperations: ExecOperations, private val fileOperations: FileSystemOperations
@@ -47,7 +52,7 @@ abstract class AppImageTask @Inject constructor(
     @get:Input
     abstract val javaOptions: ListProperty<String>
 
-    /** The directory jpackage writes the image into; the image itself is named after the application. */
+    /** The directory that receives the image; the image itself is named after the application. */
     @get:OutputDirectory
     abstract val destination: DirectoryProperty
 
@@ -55,7 +60,9 @@ abstract class AppImageTask @Inject constructor(
     fun pack() {
         val output = destination.get().asFile
         val input = File(temporaryDir, "input")
-        fileOperations.delete { delete(output, input) }
+        val staged = File(temporaryDir, "image")
+        val previous = File(temporaryDir, "previous")
+        fileOperations.delete { delete(input, staged, previous) }
         fileOperations.copy {
             from(mainJar)
             into(input)
@@ -69,7 +76,7 @@ abstract class AppImageTask @Inject constructor(
             "--main-jar", mainJar.get().asFile.name,
             "--main-class", mainClass.get(),
             "--runtime-image", runtimeImage.get().asFile.absolutePath,
-            "--dest", output.absolutePath
+            "--dest", staged.absolutePath
         )
         javaOptions.get().forEach { option -> arguments += listOf("--java-options", option) }
         if (PackagingTools.windows) {
@@ -77,5 +84,26 @@ abstract class AppImageTask @Inject constructor(
             arguments += "--win-console"
         }
         execOperations.exec { commandLine(arguments) }
+        replace(output, staged, previous)
+    }
+
+    /**
+     * Swaps the finished image in by renaming. A delete of an image a running server holds files
+     * in removes the files it can and leaves that server unable to start again; Windows refuses
+     * the rename outright, so the image stays whole.
+     */
+    private fun replace(output: File, staged: File, previous: File) {
+        try {
+            Files.move(output.toPath(), previous.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (failure: IOException) {
+            throw GradleException("$output is in use and was left as it is. Stop what runs from it, such as a connected MCP server, and build again.", failure)
+        }
+        try {
+            Files.move(staged.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (failure: IOException) {
+            Files.move(previous.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            throw failure
+        }
+        fileOperations.delete { delete(previous) }
     }
 }
