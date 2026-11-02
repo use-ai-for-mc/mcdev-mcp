@@ -6,6 +6,7 @@ import dev.mcdevmcp.buildlogic.McpbBundleTask
 import dev.mcdevmcp.buildlogic.PackagingTools
 import dev.mcdevmcp.buildlogic.RuntimeImageTask
 import dev.mcdevmcp.buildlogic.Sha256FileTask
+import java.nio.file.FileSystems
 
 plugins {
     application
@@ -227,7 +228,7 @@ val appImage = tasks.register<AppImageTask>("appImage") {
             "--enable-preview",
             "-Xlog:disable",
             "-Xlog:all=warning,aot=off,cds=off:stderr",
-            $$"-XX:AOTCache=$APPDIR$${File.separator}mcdev-mcp.aot"
+            $$"-XX:AOTCache=$APPDIR$${FileSystems.getDefault().separator}mcdev-mcp.aot"
         )
     )
     destination.set(layout.buildDirectory.dir("packaging/image"))

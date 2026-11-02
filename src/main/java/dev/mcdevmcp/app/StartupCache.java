@@ -1,6 +1,5 @@
 package dev.mcdevmcp.app;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
@@ -76,7 +75,7 @@ final class StartupCache {
      */
     static String identity(String classPath) throws IOException {
         StringBuilder identity = new StringBuilder(Runtime.version().toString());
-        for (String entry : classPath.split(File.pathSeparator)) {
+        for (String entry : classPath.split(System.getProperty("path.separator"))) {
             Path file = Path.of(entry);
             if (Files.isRegularFile(file)) {
                 identity.append('\n').append(file.getFileName()).append(' ').append(Files.size(file)).append(' ').append(Files.getLastModifiedTime(file).toMillis());

@@ -15,9 +15,9 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
-import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 
@@ -58,25 +58,26 @@ abstract class AppImageTask @Inject constructor(
 
     @TaskAction
     fun pack() {
-        val output = destination.get().asFile
-        val input = File(temporaryDir, "input")
-        val staged = File(temporaryDir, "image")
-        val previous = File(temporaryDir, "previous")
+        val output = destination.get().asFile.toPath()
+        val temporary = temporaryDir.toPath()
+        val input = temporary.resolve("input")
+        val staged = temporary.resolve("image")
+        val previous = temporary.resolve("previous")
         fileOperations.delete { delete(input, staged, previous) }
         fileOperations.copy {
             from(mainJar)
             into(input)
         }
         val arguments = mutableListOf(
-            PackagingTools.executable(File(jdkHome.get()), "jpackage"),
+            PackagingTools.executable(Path.of(jdkHome.get()), "jpackage"),
             "--type", "app-image",
             "--name", applicationName.get(),
             "--app-version", applicationVersion.get(),
-            "--input", input.absolutePath,
+            "--input", input.toAbsolutePath().toString(),
             "--main-jar", mainJar.get().asFile.name,
             "--main-class", mainClass.get(),
             "--runtime-image", runtimeImage.get().asFile.absolutePath,
-            "--dest", staged.absolutePath
+            "--dest", staged.toAbsolutePath().toString()
         )
         javaOptions.get().forEach { option -> arguments += listOf("--java-options", option) }
         if (PackagingTools.windows) {
@@ -92,16 +93,16 @@ abstract class AppImageTask @Inject constructor(
      * in removes the files it can and leaves that server unable to start again; Windows refuses
      * the rename outright, so the image stays whole.
      */
-    private fun replace(output: File, staged: File, previous: File) {
+    private fun replace(output: Path, staged: Path, previous: Path) {
         try {
-            Files.move(output.toPath(), previous.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            Files.move(output, previous, StandardCopyOption.ATOMIC_MOVE)
         } catch (failure: IOException) {
             throw GradleException("$output is in use and was left as it is. Stop what runs from it, such as a connected MCP server, and build again.", failure)
         }
         try {
-            Files.move(staged.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            Files.move(staged, output, StandardCopyOption.ATOMIC_MOVE)
         } catch (failure: IOException) {
-            Files.move(previous.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            Files.move(previous, output, StandardCopyOption.ATOMIC_MOVE)
             throw failure
         }
         fileOperations.delete { delete(previous) }

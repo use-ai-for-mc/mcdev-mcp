@@ -1,6 +1,6 @@
 package dev.mcdevmcp.buildlogic
 
-import java.io.File
+import java.nio.file.Path
 import java.util.Locale
 
 /**
@@ -30,7 +30,7 @@ object PackagingTools {
         "$operatingSystem-$arch"
     }
 
-    fun executable(home: File, name: String): String = File(home, "bin/" + if (windows) "$name.exe" else name).absolutePath
+    fun executable(home: Path, name: String): String = home.resolve("bin").resolve(if (windows) "$name.exe" else name).toAbsolutePath().toString()
 
     /** npm is a batch file on Windows, which a process can only start by its full name. */
     val npm: String = if (windows) "npm.cmd" else "npm"

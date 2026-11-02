@@ -12,9 +12,10 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
-import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import javax.inject.Inject
+import kotlin.io.path.invariantSeparatorsPathString
 
 /**
  * Packs an application image and its manifest with the official MCPB packer, then unpacks the
@@ -46,9 +47,9 @@ abstract class McpbBundleTask @Inject constructor(
 
     @TaskAction
     fun pack() {
-        val stage = File(temporaryDir, "stage")
-        val archive = bundle.get().asFile
-        val extracted = unpacked.get().asFile
+        val stage = temporaryDir.toPath().resolve("stage")
+        val archive = bundle.get().asFile.toPath()
+        val extracted = unpacked.get().asFile.toPath()
         fileOperations.delete { delete(stage, archive, extracted) }
         fileOperations.copy {
             from(image)
@@ -60,34 +61,35 @@ abstract class McpbBundleTask @Inject constructor(
 
         // The packer leaves out files it takes for development leftovers, and only a Unix packer
         // records which files are executable. Neither may cost the image a file it needs.
-        val source = image.get().asFile
+        val source = image.get().asFile.toPath()
         val packaged = files(source)
         val returned = files(extracted)
         val expected = packaged + MANIFEST
         check(expected == returned) {
             "The bundle does not hold the image and its manifest: missing ${expected - returned}, unexpected ${returned - expected}"
         }
-        requireSameContents(MANIFEST, manifest.get().asFile, File(extracted, MANIFEST))
+        requireSameContents(MANIFEST, manifest.get().asFile.toPath(), extracted.resolve(MANIFEST))
         packaged.forEach { path ->
-            val original = File(source, path)
-            val copy = File(extracted, path)
+            val original = source.resolve(path)
+            val copy = extracted.resolve(path)
             requireSameContents(path, original, copy)
-            check(original.canExecute() == copy.canExecute()) { "The bundle changed whether $path is executable" }
+            check(Files.isExecutable(original) == Files.isExecutable(copy)) { "The bundle changed whether $path is executable" }
         }
     }
 
-    private fun requireSameContents(path: String, original: File, copy: File) {
-        check(Files.mismatch(original.toPath(), copy.toPath()) == -1L) { "The bundle changed the contents of $path" }
+    private fun requireSameContents(path: String, original: Path, copy: Path) {
+        check(Files.mismatch(original, copy) == -1L) { "The bundle changed the contents of $path" }
     }
 
-    private fun run(verb: String, from: File, to: File) {
+    private fun run(verb: String, from: Path, to: Path) {
         execOperations.exec {
-            commandLine("node", packer.get().asFile.absolutePath, verb, from.absolutePath, to.absolutePath)
+            commandLine("node", packer.get().asFile.absolutePath, verb, from.toAbsolutePath().toString(), to.toAbsolutePath().toString())
         }
     }
 
-    private fun files(root: File): Set<String> =
-        root.walkTopDown().filter(File::isFile).map { file -> file.relativeTo(root).invariantSeparatorsPath }.toSortedSet()
+    private fun files(root: Path): Set<String> = Files.walk(root).use { paths ->
+        paths.filter { path -> Files.isRegularFile(path) }.map { path -> root.relativize(path).invariantSeparatorsPathString }.toList().toSortedSet()
+    }
 
     private companion object {
         const val MANIFEST = "manifest.json"

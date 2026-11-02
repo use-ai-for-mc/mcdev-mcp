@@ -9,7 +9,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
-import java.io.File
+import java.nio.file.Path
 import javax.inject.Inject
 
 /**
@@ -29,15 +29,15 @@ abstract class RuntimeImageTask @Inject constructor(
 
     @TaskAction
     fun link() {
-        val output = image.get().asFile
+        val output = image.get().asFile.toPath()
         fileOperations.delete { delete(output) }
         execOperations.exec {
             commandLine(
-                PackagingTools.executable(File(jdkHome.get()), "jlink"),
+                PackagingTools.executable(Path.of(jdkHome.get()), "jlink"),
                 "--add-modules", modules.get().joinToString(","),
                 "--strip-debug", "--no-header-files", "--no-man-pages",
                 "--compress", "zip-6",
-                "--output", output.absolutePath
+                "--output", output.toAbsolutePath().toString()
             )
         }
         // jlink can only generate the base class-data archives of a non-preview launch. The
