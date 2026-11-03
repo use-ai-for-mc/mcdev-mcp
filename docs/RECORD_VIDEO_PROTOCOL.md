@@ -4,7 +4,7 @@ Adds a new request type to the DebugBridge WebSocket protocol so the mcdev-mcp t
 
 This document is the contract between the MCP server (this repo) and the [DebugBridge mod](https://github.com/use-ai-for-mc/debugbridge). Both sides implement against it.
 
-It complements the existing `screenshot` handler — same threading model, same JPEG output, same file path semantics. Skim [src/tools/runtime/screenshot.ts](../src/tools/runtime/screenshot.ts) on the MCP side for the closest-analog tool surface, then read this doc for what's new.
+It complements the existing `screenshot` handler — same threading model, same JPEG output, same file path semantics. Skim [`McScreenshotTool`](../src/main/java/dev/mcdevmcp/tools/runtime/McScreenshotTool.java) on the MCP side for the closest-analog tool surface, then read this doc for what's new.
 
 ---
 
@@ -230,6 +230,6 @@ These are deliberately *not* in this spec — file follow-up issues if needed:
 
 ## 8. MCP-side surface (for context)
 
-The MCP server will add `mc_record_video` to `src/tools/runtime/`, wiring the request through `bridgeSession.send("record_video", payload)` and returning the path(s) to the agent. The tool description will quote the caps in §3 so the model picks sensible parameters.
+The MCP server exposes `mc_record_video` through [`McRecordVideoTool`](../src/main/java/dev/mcdevmcp/tools/runtime/McRecordVideoTool.java), which sends a `record_video` request over the bridge session and returns the path(s) to the agent. The tool description quotes the caps in §3 so the model picks sensible parameters.
 
-The MCP tool can ship before the mod-side handler — until the mod recognizes `record_video`, calls will surface as a clean "unknown request type" error.
+Against a mod that does not recognize `record_video`, calls surface as a clean "unknown request type" error.

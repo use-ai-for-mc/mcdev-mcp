@@ -1,0 +1,19 @@
+{"label":"screenshot-success","content":[{"type":"TEXT","text":"C:\\Game\\shot.jpg\n(1920x1080 JPEG, 1.5 KB)"}],"isError":false}
+{"label":"screenshot-floating-integral-token","content":[{"type":"TEXT","text":"C:\\Game\\shot.jpg\n(1920x1080 JPEG, 1.5 KB)"}],"isError":false}
+{"label":"screenshot-declared-error","content":[{"type":"TEXT","text":"Error: bridge boom"}],"isError":true}
+{"label":"screenshot-missing-result","content":[{"type":"TEXT","text":"Bridge 'screenshot' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version."}],"isError":true}
+{"label":"screenshot-wrong-primitive","content":[{"type":"TEXT","text":"DebugBridge screenshot response has invalid result for debugbridge.screenshot.v1"}],"isError":true}
+{"label":"record-grid-tagged-fixed-seconds","content":[{"type":"TEXT","text":"C:\\Game\\grid.jpg\n(640x360 JPEG, 2.5 KB; 4 frames @ 320x180, grid 2x2; capture 200ms, avg 50.0ms)"}],"isError":false}
+{"label":"record-frames-dropped","content":[{"type":"TEXT","text":"3 frames @ 320x180 JPEG, 1.5 KB total; capture 54ms, avg 17.2ms, 2 dropped\nC:\\Game\\frame-1.jpg\nC:\\Game\\frame-2.jpg\nC:\\Game\\frame-3.jpg"}],"isError":false}
+{"label":"record-unknown-mode","content":[{"type":"TEXT","text":"DebugBridge record_video response has invalid result for debugbridge.record-video.v1"}],"isError":true}
+{"label":"record-malformed-paths","content":[{"type":"TEXT","text":"DebugBridge record_video response has invalid result for debugbridge.record-video.v1"}],"isError":true}
+{"label":"record-declared-error","content":[{"type":"TEXT","text":"Error: recording failed"}],"isError":true}
+{"label":"item-texture-success","content":[{"type":"IMAGE","mimeType":"image/png","data":"iVBORw0KGgo="},{"type":"TEXT","text":"16x16 sprite=minecraft:item/diamond"}],"isError":false}
+{"label":"item-texture-wrong-primitive","content":[{"type":"TEXT","text":"DebugBridge getItemTexture response has invalid result for debugbridge.texture.v1"}],"isError":true}
+{"label":"entity-item-texture-success","content":[{"type":"IMAGE","mimeType":"image/png","data":"QUFBPQ=="},{"type":"TEXT","text":"32x32 sprite=minecraft:item/iron_sword"}],"isError":false}
+{"label":"item-texture-by-id-success","content":[{"type":"IMAGE","mimeType":"image/png","data":"QkJCPQ=="},{"type":"TEXT","text":"16x16 sprite=minecraft:item/diamond"}],"isError":false}
+{"label":"entity-glow-success","content":[{"type":"TEXT","text":"{\n  \"entityId\": 7,\n  \"glow\": true\n}"}],"isError":false}
+{"label":"entity-glow-declared-error","content":[{"type":"TEXT","text":"Error: entity gone"}],"isError":true}
+{"label":"block-glow-success","content":[{"type":"TEXT","text":"{\n  \"x\": 1,\n  \"y\": 64,\n  \"z\": -2,\n  \"glow\": true\n}"}],"isError":false}
+{"label":"clear-block-glow-success","content":[{"type":"TEXT","text":"{\n  \"cleared\": true\n}"}],"isError":false}
+{"label":"clear-block-glow-missing-result","content":[{"type":"TEXT","text":"Bridge 'clearBlockGlow' reported success but returned no result. This is a bridge protocol mismatch — please verify the DebugBridge mod version."}],"isError":true}

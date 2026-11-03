@@ -1,0 +1,236 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release bytes once on the preview JDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
+          test -n "$feature"
+          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
+          if [ "$early_access" = "true" ]; then
+            version="$feature-ea"
+          else
+            version="$feature"
+          fi
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ steps.preview-java.outputs.version }}
+          cache: gradle
+      - name: Require the exact version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version"
+      - name: Test and produce the immutable release payload
+        run: >-
+          ./gradlew clean test check shadowJar runtimeTestBundle
+          releaseArtifactBundle --rerun-tasks --no-build-cache --no-configuration-cache --console=plain
+      - name: Verify staged JAR checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/artifacts/release
+          sha256sum --check mcdev-mcp-*.jar.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build
+          path: build/artifacts/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  runtime-matrix:
+    name: Test the release JAR
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
+          test -n "$feature"
+          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
+          if [ "$early_access" = "true" ]; then
+            version="$feature-ea"
+          else
+            version="$feature"
+          fi
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ steps.preview-java.outputs.version }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-build
+          path: downloaded
+      - name: Verify and execute the exact compiled runtime bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t bundles < <(find downloaded -maxdepth 1 -name 'mcdev-mcp-runtime-test-*.zip' -type f)
+          test "${#bundles[@]}" -eq 1
+          mkdir runtime
+          unzip -q "${bundles[0]}" -d runtime
+          cd runtime/server
+          sha256sum --check mcdev-mcp-*.jar.sha256
+          mapfile -t jars < <(find . -maxdepth 1 -name 'mcdev-mcp-*.jar' -type f)
+          test "${#jars[@]}" -eq 1
+          cd ../..
+          java --enable-preview --illegal-native-access=deny \
+            -cp "runtime/harness:runtime/server/${jars[0]#./}" \
+            dev.mcdevmcp.packaging.RuntimeArtifactSmokeMain \
+            "runtime/server/${jars[0]#./}"
+
+  package:
+    name: Application image and MCPB on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the preview Java feature
+        id: preview-java
+        shell: bash
+        run: |
+          set -euo pipefail
+          feature="$(sed -n 's/^javaFeature=//p' gradle.properties | tr -d '\r')"
+          test -n "$feature"
+          early_access="$(sed -n 's/^javaEarlyAccess=//p' gradle.properties | tr -d '\r')"
+          if [ "$early_access" = "true" ]; then
+            version="$feature-ea"
+          else
+            version="$feature"
+          fi
+          echo "feature=$feature" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: ${{ steps.preview-java.outputs.version }}
+          cache: gradle
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: packaging/mcpb/package-lock.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-build
+          path: downloaded
+      - name: Wrap the build-once JAR in an application image and an MCPB bundle
+        shell: bash
+        run: ./gradlew appImageZip mcpbBundle -PprebuiltRelease=downloaded --no-configuration-cache --console=plain
+      - name: Exercise the image and the unpacked bundle before and after each records its startup cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          bundles=(downloaded/mcdev-mcp-runtime-test-*.zip)
+          test "${#bundles[@]}" -eq 1
+          rm -rf runtime
+          mkdir runtime
+          unzip -q "${bundles[0]}" -d runtime
+          jars=(runtime/server/mcdev-mcp-*.jar)
+          test "${#jars[@]}" -eq 1
+          version="$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')"
+          separator=":"
+          if [ "$RUNNER_OS" = "Windows" ]; then separator=";"; fi
+          classpath="runtime/harness${separator}${jars[0]}"
+          java --enable-preview -cp "$classpath" dev.mcdevmcp.packaging.AppImageSmokeMain \
+            build/packaging/image "$version" build/packaging/smoke
+          java --enable-preview -cp "$classpath" dev.mcdevmcp.packaging.McpbBundleSmokeMain \
+            build/packaging/mcpb build/packaging/mcpb-smoke
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.os }}
+          path: |
+            build/distributions/mcdev-mcp-*-*.zip
+            build/distributions/mcdev-mcp-*-*.mcpb
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-release:
+    name: Verify the exact release assets
+    needs: [ build, runtime-matrix, package ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-build
+          path: downloaded/release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          path: downloaded/packages
+          merge-multiple: true
+      - name: Materialize only the publishable assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')"
+          test "$GITHUB_REF_NAME" = "v$version"
+          mkdir release-assets
+          cp "downloaded/release/mcdev-mcp-$version.jar" release-assets/
+          cp "downloaded/release/mcdev-mcp-$version.jar.sha256" release-assets/
+          cp downloaded/packages/* release-assets/
+      - name: Verify release provenance
+        shell: pwsh
+        run: |
+          $version = (Get-Content gradle.properties | Where-Object { $_ -like 'version=*' }).Substring(8)
+          ./scripts/verify-release-assets.ps1 -DryRun -Version $version -Directory release-assets
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verified-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the verified release assets
+    needs: verify-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified-release-assets
+          path: release-assets
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-assets/*)
+          test "${#assets[@]}" -eq 8
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

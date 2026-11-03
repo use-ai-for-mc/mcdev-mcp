@@ -1,0 +1,35 @@
+{"label":"connect-success","success":true,"resultPresent":true,"result":{"version":"1.21.11","mappingStatus":"mojang","obfuscated":true,"refs":7,"gameDir":"C:\\Game","latestLog":"C:\\Game\\logs\\latest.log","sessionControlEnabled":true}}
+{"label":"connect-declared-error","success":false,"resultPresent":false,"error":"offline"}
+{"label":"connect-missing-result","success":true,"resultPresent":false}
+{"label":"execute-success","success":true,"resultPresent":true,"result":{"value":1},"output":"line"}
+{"label":"execute-number-formatting","success":true,"resultPresent":true,"result":{"negativeZero":-0.0,"smallFixed":0.000001,"smallExponent":1e-7,"largeFixed":100000000000000000000,"largeExponent":1e21,"unsafeInteger":9007199254740993}}
+{"label":"execute-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"execute-timeout","failure":"Request timed out after 17000ms. The game may be frozen or the script may be in an infinite loop."}
+{"label":"snapshot-success","success":true,"resultPresent":true,"result":{"player":{"name":"Alex","x":1.5},"fps":60,"futureField":"kept"}}
+{"label":"snapshot-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"snapshot-missing-result","success":true,"resultPresent":false}
+{"label":"snapshot-wrong-primitive","success":true,"resultPresent":true,"result":"bad"}
+{"label":"nearby-entities-success","success":true,"resultPresent":true,"result":{"entities":[{"entityId":12,"type":"Zombie","distance":4.25}],"count":1,"futureField":true}}
+{"label":"nearby-entities-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"nearby-entities-missing-result","success":true,"resultPresent":false}
+{"label":"entity-details-success","success":true,"resultPresent":true,"result":{"entityId":12,"type":"Zombie","health":20,"futureField":"kept"}}
+{"label":"entity-details-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"entity-details-missing-result","success":true,"resultPresent":false}
+{"label":"nearby-blocks-success","success":true,"resultPresent":true,"result":{"blocks":[{"x":1,"y":64,"z":2,"type":"ChestBlockEntity"}],"count":1}}
+{"label":"nearby-blocks-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"nearby-blocks-missing-result","success":true,"resultPresent":false}
+{"label":"block-details-success","success":true,"resultPresent":true,"result":{"x":1,"y":64,"z":2,"type":"ChestBlockEntity","blockId":"minecraft:chest","items":[]}}
+{"label":"block-details-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"block-details-missing-result","success":true,"resultPresent":false}
+{"label":"looked-at-entity-success","success":true,"resultPresent":true,"result":{"entityId":12}}
+{"label":"looked-at-entity-null","success":true,"resultPresent":true,"result":{"entityId":null}}
+{"label":"looked-at-entity-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"looked-at-entity-missing-result","success":true,"resultPresent":false}
+{"label":"looked-at-entity-wrong-primitive","success":true,"resultPresent":true,"result":"twelve"}
+{"label":"chat-history-success","success":true,"resultPresent":true,"result":{"messages":[{"plain":"hello","addedTime":42}],"count":1}}
+{"label":"chat-history-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"chat-history-missing-result","success":true,"resultPresent":false}
+{"label":"screen-inspect-success","success":true,"resultPresent":true,"result":{"open":true,"type":"InventoryScreen","title":"Inventory","slots":[]}}
+{"label":"screen-inspect-declared-error","success":false,"resultPresent":false,"error":"bridge boom"}
+{"label":"screen-inspect-missing-result","success":true,"resultPresent":false}
+{"label":"snapshot-declared-error-without-message","success":false,"resultPresent":false}

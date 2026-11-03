@@ -1,0 +1,22 @@
+{
+  "result": {
+    "resources": [
+      {
+        "uri": "mcdev://guides/python-scripting",
+        "name": "python-scripting",
+        "title": "Python client guide for the Minecraft DebugBridge",
+        "description": "How to drive a live Minecraft instance from Python by speaking the DebugBridge WebSocket protocol directly — wire format, a minimal asyncio client, and the Groovy surface you send through it. Read this before writing a Python script that bypasses the mcdev-mcp tools.",
+        "mimeType": "text/markdown"
+      },
+      {
+        "uri": "mcdev://guides/dev-loop",
+        "name": "dev-loop",
+        "title": "The mod dev loop: build → deploy → relaunch → rejoin",
+        "description": "How a coding agent runs the full mod test loop without human interaction: discover the launcher and instance from the bridge's gameDir, deploy the jar, quit via mc_quit_client, launch detached from the shell, reconnect with mc_wait_for_bridge, and rejoin a server. Read this before restarting the Minecraft client or automating mod testing.",
+        "mimeType": "text/markdown"
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 0
+}

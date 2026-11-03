@@ -1,0 +1,12 @@
+{
+  "name": "mcdev-mcp-mcpb-packaging",
+  "private": true,
+  "version": "3.0.0",
+  "description": "Build-time-only MCPB packaging for mcdev-mcp.",
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2"
+  },
+  "overrides": {
+    "tmp": "0.2.7"
+  }
+}

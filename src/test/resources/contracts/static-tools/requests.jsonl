@@ -1,0 +1,945 @@
+{
+  "label": "no_active",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle"
+      }
+    }
+  }
+}
+{
+  "label": "version_list_initial",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "list"
+      }
+    }
+  }
+}
+{
+  "label": "version_missing_action",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {}
+    }
+  }
+}
+{
+  "label": "version_set_missing_argument",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "set"
+      }
+    }
+  }
+}
+{
+  "label": "version_unknown_action",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "sideways"
+      }
+    }
+  }
+}
+{
+  "label": "version_set_unknown",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "set",
+        "version": "9.9.9"
+      }
+    }
+  }
+}
+{
+  "label": "version_set_unindexed",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "set",
+        "version": "1.21.4"
+      }
+    }
+  }
+}
+{
+  "label": "version_set_active",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "set",
+        "version": "1.21.5"
+      }
+    }
+  }
+}
+{
+  "label": "version_list_active",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_version",
+      "arguments": {
+        "action": "list"
+      }
+    }
+  }
+}
+{
+  "label": "search_success_all",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 11,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle"
+      }
+    }
+  }
+}
+{
+  "label": "constructor_search",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "ConstructorOnly",
+        "type": "method"
+      }
+    }
+  }
+}
+{
+  "label": "search_empty",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 13,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "absent",
+        "type": "field"
+      }
+    }
+  }
+}
+{
+  "label": "search_missing_query",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 14,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {}
+    }
+  }
+}
+{
+  "label": "search_malformed_query_number",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 15,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": 42
+      }
+    }
+  }
+}
+{
+  "label": "search_invalid_enum_wire",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 16,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle",
+        "type": "bogus"
+      }
+    }
+  }
+}
+{
+  "label": "search_explicit_version_precedence",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 17,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle",
+        "version": "1.21.6"
+      }
+    }
+  }
+}
+{
+  "label": "search_empty_version_uses_active",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 18,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle",
+        "version": ""
+      }
+    }
+  }
+}
+{
+  "label": "search_explicit_missing",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 19,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "needle",
+        "version": "9.9.9"
+      }
+    }
+  }
+}
+{
+  "label": "search_default_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 20,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class"
+      }
+    }
+  }
+}
+{
+  "label": "search_fractional_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 21,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": 3.9
+      }
+    }
+  }
+}
+{
+  "label": "search_subunit_fractional_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 22,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": 0.9
+      }
+    }
+  }
+}
+{
+  "label": "search_max_plus_point_one_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 23,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": 1000.1
+      }
+    }
+  }
+}
+{
+  "label": "search_nonpositive_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 24,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": -1
+      }
+    }
+  }
+}
+{
+  "label": "search_nonfinite_string_wire",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 25,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": "Infinity"
+      }
+    }
+  }
+}
+{
+  "label": "search_oversized_capped",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 26,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_search",
+      "arguments": {
+        "query": "bulk",
+        "type": "class",
+        "limit": 100000
+      }
+    }
+  }
+}
+{
+  "label": "class_summary_default",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 27,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.Alpha"
+      }
+    }
+  }
+}
+{
+  "label": "constructor_class_summary",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 28,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.ConstructorOnly"
+      }
+    }
+  }
+}
+{
+  "label": "constructor_class_methods",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 29,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.ConstructorOnly",
+        "view": "methods"
+      }
+    }
+  }
+}
+{
+  "label": "class_methods",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 30,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "view": "methods"
+      }
+    }
+  }
+}
+{
+  "label": "class_fields",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 31,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "view": "fields"
+      }
+    }
+  }
+}
+{
+  "label": "class_full",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 32,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "view": "full"
+      }
+    }
+  }
+}
+{
+  "label": "class_missing_class_name",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 33,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {}
+    }
+  }
+}
+{
+  "label": "class_wrong_class_name_type",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 34,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": 42
+      }
+    }
+  }
+}
+{
+  "label": "class_missing",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 35,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "Alpha"
+      }
+    }
+  }
+}
+{
+  "label": "class_invalid_enum_wire",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 36,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_class",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "view": "bogus"
+      }
+    }
+  }
+}
+{
+  "label": "method_exact",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 37,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "methodName": "Needle"
+      }
+    }
+  }
+}
+{
+  "label": "constructor_get_method",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 38,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "className": "alpha.ConstructorOnly",
+        "methodName": "ConstructorOnly"
+      }
+    }
+  }
+}
+{
+  "label": "method_missing_class_name",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 39,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "methodName": "needle"
+      }
+    }
+  }
+}
+{
+  "label": "method_missing_method_name",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 40,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "className": "alpha.Alpha"
+      }
+    }
+  }
+}
+{
+  "label": "method_case_insensitive",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 41,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "methodName": "NEEDLE"
+      }
+    }
+  }
+}
+{
+  "label": "method_missing",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 42,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_get_method",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "methodName": "missing"
+      }
+    }
+  }
+}
+{
+  "label": "packages_default",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 43,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {}
+    }
+  }
+}
+{
+  "label": "packages_minecraft",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 44,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "namespace": "minecraft"
+      }
+    }
+  }
+}
+{
+  "label": "packages_fabric",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 45,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "namespace": "fabric"
+      }
+    }
+  }
+}
+{
+  "label": "packages_invalid_enum_wire",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 46,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "namespace": "bogus"
+      }
+    }
+  }
+}
+{
+  "label": "packages_wrong_namespace_type",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "namespace": 42
+      }
+    }
+  }
+}
+{
+  "label": "packages_fractional_truncation",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 48,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "limit": 2.8
+      }
+    }
+  }
+}
+{
+  "label": "packages_subunit_fractional_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 49,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "limit": 0.9
+      }
+    }
+  }
+}
+{
+  "label": "packages_max_plus_point_one_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 50,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_packages",
+      "arguments": {
+        "limit": 5000.1
+      }
+    }
+  }
+}
+{
+  "label": "classes_case_insensitive",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 51,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": "ALPHA",
+        "limit": 1
+      }
+    }
+  }
+}
+{
+  "label": "classes_missing_package_path",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 52,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {}
+    }
+  }
+}
+{
+  "label": "classes_default",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 53,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": "bulk"
+      }
+    }
+  }
+}
+{
+  "label": "classes_subunit_fractional_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 54,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": "bulk",
+        "limit": 0.9
+      }
+    }
+  }
+}
+{
+  "label": "classes_max_plus_point_one_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 55,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": "bulk",
+        "limit": 5000.1
+      }
+    }
+  }
+}
+{
+  "label": "classes_oversized_capped",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 56,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": "bulk",
+        "limit": 100000
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_subclasses",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 57,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "direction": "subclasses",
+        "limit": 1
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_implementors",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 58,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "hierarchy.RootInterface",
+        "direction": "implementors",
+        "limit": 1
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_missing_class_name",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 59,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "direction": "subclasses"
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_missing_direction",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 60,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "alpha.Alpha"
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_root_missing_direction",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 61,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "hierarchy.RootInterface"
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_root_sideways_direction",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 62,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "hierarchy.RootInterface",
+        "direction": "sideways"
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_subunit_fractional_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 63,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "hierarchy.RootInterface",
+        "direction": "implementors",
+        "limit": 0.9
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_max_plus_point_one_limit",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 64,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "hierarchy.RootInterface",
+        "direction": "implementors",
+        "limit": 5000.1
+      }
+    }
+  }
+}
+{
+  "label": "hierarchy_invalid_enum_wire",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 65,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_find_hierarchy",
+      "arguments": {
+        "className": "alpha.Alpha",
+        "direction": "sideways"
+      }
+    }
+  }
+}
+{
+  "label": "classes_wrong_package_path_type",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 68,
+    "method": "tools/call",
+    "params": {
+      "name": "mc_list_classes",
+      "arguments": {
+        "packagePath": 42
+      }
+    }
+  }
+}

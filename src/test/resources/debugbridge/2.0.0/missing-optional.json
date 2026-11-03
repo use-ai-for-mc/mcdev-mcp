@@ -1,0 +1,10 @@
+{
+  "id": "req_1",
+  "success": true,
+  "result": {
+    "version": "1.21.11",
+    "mappingStatus": "passthrough",
+    "obfuscated": true,
+    "refs": 0
+  }
+}

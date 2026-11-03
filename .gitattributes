@@ -1,0 +1,4 @@
+*.jsonl text eol=lf
+/manifest.json text eol=lf
+/src/main/resources/**/*.txt text eol=lf
+/src/main/resources/**/*.json text eol=lf

@@ -1,0 +1,6 @@
+{"label":"join_no_wait","text":"Join accepted (connect started): {\n  \u0022status\u0022: \u0022connecting\u0022\n}\nUse mc_wait_until_in_world to confirm the outcome.","isError":false}
+{"label":"join_missing_result","text":"Join accepted (connect started): undefined\nUse mc_wait_until_in_world to confirm the outcome.","isError":false}
+{"label":"leave_success","text":"Disconnect queued: {\n  \u0022status\u0022: \u0022disconnecting\u0022\n}","isError":false}
+{"label":"leave_missing_result","text":"Disconnect queued: undefined","isError":false}
+{"label":"command_strips_one_slash","text":"\u0022Command sent: give @s minecraft:stone\u0022","isError":false}
+{"label":"command_error","text":"Error: Command rejected","isError":true}
