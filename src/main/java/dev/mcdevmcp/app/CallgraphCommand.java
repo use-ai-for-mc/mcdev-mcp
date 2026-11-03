@@ -31,7 +31,7 @@ public final class CallgraphCommand implements Callable<Integer> {
         MinecraftVersion minecraft = new MinecraftVersion(MinecraftVersionValidator.requireSupported(version));
         spec.commandLine().getOut().printf("Generating callgraph for Minecraft %s...%n", minecraft.value());
         var summary = operations.rebuildCallgraph(minecraft, CliProgressSink.forWriter(spec.commandLine().getOut()), Cancellation.none());
-        spec.commandLine().getOut().printf("Recorded %d call edges.%n", summary.edges());
+        spec.commandLine().getOut().printf("Recorded %d call edges and %d field accesses.%n", summary.edges(), summary.fieldAccesses());
         return 0;
     }
 }

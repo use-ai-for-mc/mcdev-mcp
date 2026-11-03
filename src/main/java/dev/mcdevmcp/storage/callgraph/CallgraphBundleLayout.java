@@ -11,11 +11,14 @@ import java.util.List;
 final class CallgraphBundleLayout {
     static final String FORMAT = "mcdev-callgraph-jsonl";
     static final String POINTER_FORMAT = "mcdev-callgraph-jsonl-pointer";
-    static final int SCHEMA_VERSION = 1;
+    /**
+     * Schema 2 added field reads and writes.
+     */
+    static final int SCHEMA_VERSION = 2;
     static final int MAXIMUM_MANIFEST_BYTES = 1024 * 1024;
     static final int MAXIMUM_POINTER_BYTES = 16 * 1024;
     static final int MAXIMUM_JSONL_LINE_BYTES = 1024 * 1024;
-    static final List<CallgraphArtifact> ARTIFACTS = List.of(CallgraphArtifact.CALLERS_DATA, CallgraphArtifact.CALLERS_INDEX, CallgraphArtifact.CALLEES_DATA, CallgraphArtifact.CALLEES_INDEX);
+    static final List<CallgraphArtifact> ARTIFACTS = List.of(CallgraphArtifact.values());
 
     private CallgraphBundleLayout() {
     }
@@ -26,6 +29,9 @@ final class CallgraphBundleLayout {
         Path pointerPath = BundleFiles.safeChild(root, "current.json");
         BundleFiles.requireRegularFile(root, pointerPath);
         CallgraphPointer pointer = CallgraphJson.readCanonical(readSmall(pointerPath, MAXIMUM_POINTER_BYTES, "Callgraph pointer"), CallgraphPointer.class, "Callgraph pointer");
+        if (POINTER_FORMAT.equals(pointer.format()) && pointer.schemaVersion() >= 1 && pointer.schemaVersion() < SCHEMA_VERSION) {
+            throw new OutdatedCallgraphException(pointer.schemaVersion());
+        }
         if (!POINTER_FORMAT.equals(pointer.format()) || pointer.schemaVersion() != SCHEMA_VERSION || isInvalidSha256(pointer.generation())) {
             throw new IOException("Invalid callgraph current.json pointer");
         }
@@ -55,7 +61,7 @@ final class CallgraphBundleLayout {
             throw new IOException("Callgraph manifest has a blank Minecraft version");
         }
         if (manifest.files().size() != ARTIFACTS.size()) {
-            throw new IOException("Callgraph manifest must describe exactly four JSONL artifacts");
+            throw new IOException("Callgraph manifest must describe exactly " + ARTIFACTS.size() + " JSONL artifacts");
         }
         for (int index = 0; index < ARTIFACTS.size(); index++) {
             CallgraphFileMetadata metadata = manifest.files().get(index);

@@ -54,4 +54,10 @@ public class Fixture extends Base {
         target.virtualTarget();
         target.virtualTarget();
     }
+
+    public int fields(Target target) {
+        inherited = 5;
+        Target.shared = target;
+        return target.count + inherited;
+    }
 }

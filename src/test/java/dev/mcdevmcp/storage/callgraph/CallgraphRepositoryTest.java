@@ -39,7 +39,7 @@ class CallgraphRepositoryTest {
     }
 
     private static CallgraphDataRecord edge(long id, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer line) {
-        return new CallgraphDataRecord(id, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
+        return new CallgraphDataRecord(id, CallgraphEdgeKind.CALL, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
     }
 
     private static Path generation(Path bundle) throws Exception {
@@ -282,6 +282,21 @@ class CallgraphRepositoryTest {
         assertEquals("injected pointer replacement failure", failure.getMessage());
         assertEquals(priorPointer, Files.readString(bundle.resolve("current.json")));
         CallgraphBundleValidator.validate(bundle);
+    }
+
+    @Test
+    void reportsAnEarlierSchemaAsOutdatedAndReplacesItOnPublication() throws Exception {
+        Path bundle = fixture();
+        String earlier = generation(bundle).getFileName().toString();
+        Files.writeString(bundle.resolve("current.json"), "{\"format\":\"mcdev-callgraph-jsonl-pointer\",\"schemaVersion\":1,\"generation\":\"" + earlier + "\"}");
+
+        assertEquals(CallgraphRepository.PublicationStatus.OUTDATED, CallgraphRepository.publicationStatus(bundle));
+        assertThrows(IOException.class, () -> new CallgraphRepository(bundle).callers("target.Target", "hit", 1));
+
+        String fresh = CallgraphBundleTestSupport.publish(bundle, VERSION, List.of(edge(1, "fresh.Caller", "run", "()V", "fresh.Target", "hit", "()V", 1)));
+
+        assertEquals(CallgraphRepository.PublicationStatus.PUBLISHED, CallgraphRepository.publicationStatus(bundle));
+        assertEquals(Set.of(fresh), generationNames(bundle));
     }
 
     @Test

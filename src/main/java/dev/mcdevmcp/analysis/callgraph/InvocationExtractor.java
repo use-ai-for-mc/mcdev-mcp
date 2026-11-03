@@ -1,11 +1,13 @@
 package dev.mcdevmcp.analysis.callgraph;
 
 import dev.mcdevmcp.analysis.classfile.ClassDescriptors;
+import dev.mcdevmcp.storage.callgraph.CallgraphEdgeKind;
 import dev.mcdevmcp.support.Cancellation;
 
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.CodeElement;
 import java.lang.classfile.Opcode;
+import java.lang.classfile.instruction.FieldInstruction;
 import java.lang.classfile.instruction.InvokeDynamicInstruction;
 import java.lang.classfile.instruction.InvokeInstruction;
 import java.lang.classfile.instruction.LineNumber;
@@ -69,12 +71,16 @@ final class InvocationExtractor {
                 switch (element) {
                     case LineNumber lineNumber -> line = lineNumber.line();
                     case InvokeInstruction instruction when ORDINARY_OPCODES.contains(instruction.opcode()) ->
-                            edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, instruction.owner().asInternalName().replace('/', '.'), instruction.name().stringValue(), instruction.type().stringValue(), line, encounterOrder++));
+                            edges.add(new CallEdge(CallgraphEdgeKind.CALL, callerClass, callerMethod, callerDescriptor, instruction.owner().asInternalName().replace('/', '.'), instruction.name().stringValue(), instruction.type().stringValue(), line, encounterOrder++));
                     case InvokeDynamicInstruction instruction -> {
                         DynamicTarget target = dynamicTarget(instruction);
                         if (target != null) {
-                            edges.add(new CallEdge(callerClass, callerMethod, callerDescriptor, target.owner(), target.name(), target.descriptor(), line, encounterOrder++));
+                            edges.add(new CallEdge(CallgraphEdgeKind.CALL, callerClass, callerMethod, callerDescriptor, target.owner(), target.name(), target.descriptor(), line, encounterOrder++));
                         }
+                    }
+                    case FieldInstruction instruction -> {
+                        CallgraphEdgeKind kind = instruction.opcode() == Opcode.GETFIELD || instruction.opcode() == Opcode.GETSTATIC ? CallgraphEdgeKind.READ : CallgraphEdgeKind.WRITE;
+                        edges.add(new CallEdge(kind, callerClass, callerMethod, callerDescriptor, instruction.owner().asInternalName().replace('/', '.'), instruction.name().stringValue(), instruction.type().stringValue(), line, encounterOrder++));
                     }
                     default -> {
                     }

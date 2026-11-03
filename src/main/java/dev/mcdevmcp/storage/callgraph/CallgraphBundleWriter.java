@@ -8,6 +8,7 @@ import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.Cancellation;
 
 import java.io.IOException;
+import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -116,6 +117,17 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
     }
 
+    private static void requireCanonicalFieldDescriptor(String descriptor) {
+        Objects.requireNonNull(descriptor, "calleeDescriptor");
+        try {
+            if (!ClassDesc.ofDescriptor(descriptor).descriptorString().equals(descriptor) || descriptor.equals("V")) {
+                throw new IllegalArgumentException("Not a field type");
+            }
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("Invalid field calleeDescriptor: " + descriptor, exception);
+        }
+    }
+
     private static long add(long left, long right) throws IOException {
         try {
             return Math.addExact(left, right);
@@ -152,7 +164,12 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         CallgraphDataRecord value = Objects.requireNonNull(record, "record");
         if (generated) {
             requireCanonicalDescriptor(value.callerDescriptor(), "callerDescriptor");
-            requireCanonicalDescriptor(value.calleeDescriptor(), "calleeDescriptor");
+            if (value.kind() == CallgraphEdgeKind.CALL) {
+                requireCanonicalDescriptor(value.calleeDescriptor(), "calleeDescriptor");
+            }
+            else {
+                requireCanonicalFieldDescriptor(value.calleeDescriptor());
+            }
         }
         int encodedBytes = CallgraphJson.line(value).length;
         if (encodedBytes > CallgraphBundleLayout.MAXIMUM_JSONL_LINE_BYTES) {
@@ -168,9 +185,12 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         }
     }
 
-    public String publish(int classCount, int methodCount, long edgeCount) throws IOException, InterruptedException {
+    /**
+     * @param recordCount every record accepted, method calls and field accesses alike
+     */
+    public String publish(int classCount, int methodCount, long recordCount) throws IOException, InterruptedException {
         requireOpen();
-        if (classCount < 0 || methodCount < 0 || edgeCount < 0) {
+        if (classCount < 0 || methodCount < 0 || recordCount < 0) {
             throw new IllegalArgumentException("Callgraph counts must not be negative");
         }
         spill();
@@ -179,13 +199,18 @@ public final class CallgraphBundleWriter implements AutoCloseable {
             outputCounts.put(direction, mergeDirection(direction));
         }
         BundleFiles.deleteTree(work);
-        DirectionCounts callers = outputCounts.get(CallgraphDirection.CALLERS);
-        DirectionCounts callees = outputCounts.get(CallgraphDirection.CALLEES);
-        if (callers.dataRows() != edgeCount || callees.dataRows() != edgeCount) {
+        long calls = outputCounts.get(CallgraphDirection.CALLERS).dataRows();
+        long fieldAccesses = add(outputCounts.get(CallgraphDirection.READERS).dataRows(), outputCounts.get(CallgraphDirection.WRITERS).dataRows());
+        if (outputCounts.get(CallgraphDirection.CALLEES).dataRows() != calls || add(calls, fieldAccesses) != recordCount) {
             throw new IOException("External sort row count does not match generated edge count");
         }
-        List<CallgraphFileMetadata> metadata = List.of(metadata(CallgraphDirection.CALLERS.dataArtifact(), callers.dataRows()), metadata(CallgraphDirection.CALLERS.indexArtifact(), callers.indexRows()), metadata(CallgraphDirection.CALLEES.dataArtifact(), callees.dataRows()), metadata(CallgraphDirection.CALLEES.indexArtifact(), callees.indexRows()));
-        var manifest = new CallgraphManifest(CallgraphBundleLayout.FORMAT, CallgraphBundleLayout.SCHEMA_VERSION, minecraftVersion.value(), remappedJarSha256, classCount, methodCount, edgeCount, metadata);
+        List<CallgraphFileMetadata> metadata = new ArrayList<>();
+        for (CallgraphDirection direction : CallgraphDirection.values()) {
+            DirectionCounts counts = outputCounts.get(direction);
+            metadata.add(metadata(direction.dataArtifact(), counts.dataRows()));
+            metadata.add(metadata(direction.indexArtifact(), counts.indexRows()));
+        }
+        var manifest = new CallgraphManifest(CallgraphBundleLayout.FORMAT, CallgraphBundleLayout.SCHEMA_VERSION, minecraftVersion.value(), remappedJarSha256, classCount, methodCount, calls, fieldAccesses, metadata);
         byte[] manifestBytes = CallgraphJson.bytes(manifest);
         String identity = BundleHashes.sha256(manifestBytes);
         BundleFiles.writeForced(BundleFiles.safeChild(staging, "manifest.json"), manifestBytes);
@@ -270,8 +295,7 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         bufferBytes = 0;
         for (CallgraphDirection direction : CallgraphDirection.values()) {
             cancellation.throwIfCancelled();
-            List<CallgraphDataRecord> sorted = new ArrayList<>(records);
-            sorted.sort(direction.comparator());
+            List<CallgraphDataRecord> sorted = records.stream().filter(direction::holds).sorted(direction.comparator()).toList();
             Path run = work.resolve(direction.name().toLowerCase(Locale.ROOT) + "-run-" + nextRun + ".jsonl");
             writeRecords(run, sorted);
             runs.get(direction).add(run);
@@ -388,7 +412,12 @@ public final class CallgraphBundleWriter implements AutoCloseable {
         if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
             return null;
         }
-        return CallgraphBundleLayout.resolve(root).identity();
+        try {
+            return CallgraphBundleLayout.resolve(root).identity();
+        } catch (OutdatedCallgraphException _) {
+            // Nothing reads an outdated generation, so it is replaced rather than kept beside the new one.
+            return null;
+        }
     }
 
     private void cleanupOrphanStaging() throws IOException, InterruptedException {

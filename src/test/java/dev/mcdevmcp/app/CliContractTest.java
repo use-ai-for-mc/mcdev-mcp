@@ -98,7 +98,7 @@ final class CliContractTest {
 
         assertEquals(0, result.exitCode());
         assertEquals(List.of("prepare", "index", "callgraph"), operations.calls());
-        assertEquals(lines("[prepare] 0% - prepared sources", "[index] 55% - indexed sources", "Prepared 1 source root(s); indexed 7 types.", "[callgraph] 100% - scanned bytecode", "Recorded 11 call edges."), result.stdout());
+        assertEquals(lines("[prepare] 0% - prepared sources", "[index] 55% - indexed sources", "Prepared 1 source root(s); indexed 7 types.", "[callgraph] 100% - scanned bytecode", "Recorded 11 call edges and 3 field accesses."), result.stdout());
         assertEquals("", result.stderr());
     }
 
@@ -119,7 +119,7 @@ final class CliContractTest {
         assertEquals(0, rebuild.exitCode());
         assertEquals(List.of("index", "callgraph"), rebuildOperations.calls());
         assertTrue(rebuild.stdout().contains("Indexed 7 types."));
-        assertTrue(rebuild.stdout().contains("Recorded 11 call edges."));
+        assertTrue(rebuild.stdout().contains("Recorded 11 call edges and 3 field accesses."));
         assertEquals("", rebuild.stderr());
     }
 
@@ -387,7 +387,7 @@ final class CliContractTest {
             if (callgraphFailure) {
                 throw new IllegalStateException("graph fixture failure");
             }
-            return new CallgraphSummary(2, 5, 11, Duration.ZERO);
+            return new CallgraphSummary(2, 5, 11, 3, Duration.ZERO);
         }
 
         private void before(String operation, ProgressSink progress, int percent, String message) {

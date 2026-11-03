@@ -1,6 +1,9 @@
 package callgraph.fixture;
 
 public class Target {
+    static Target shared;
+    public int count;
+
     public Target() {
     }
 

@@ -47,7 +47,8 @@ public final class RebuildCommand implements Callable<Integer> {
         var index = operations.rebuildIndex(minecraft, progress, Cancellation.none());
         spec.commandLine().getOut().printf("Indexed %d types.%n", index.types());
         if (withCallgraph) {
-            spec.commandLine().getOut().printf("Recorded %d call edges.%n", operations.rebuildCallgraph(minecraft, progress, Cancellation.none()).edges());
+            var callgraph = operations.rebuildCallgraph(minecraft, progress, Cancellation.none());
+            spec.commandLine().getOut().printf("Recorded %d call edges and %d field accesses.%n", callgraph.edges(), callgraph.fieldAccesses());
         }
         return 0;
     }

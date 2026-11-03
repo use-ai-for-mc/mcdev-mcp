@@ -6,6 +6,7 @@ import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
+import dev.mcdevmcp.storage.callgraph.CallgraphEdgeKind;
 import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.support.AppEnvironment;
@@ -86,7 +87,7 @@ class McFindRefsContractTest {
     }
 
     private static CallgraphDataRecord edge(long id, String callerClass, String callerMethod, String callerDescriptor, String calleeClass, String calleeMethod, String calleeDescriptor, Integer line) {
-        return new CallgraphDataRecord(id, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
+        return new CallgraphDataRecord(id, CallgraphEdgeKind.CALL, callerClass, callerMethod, callerDescriptor, calleeClass, calleeMethod, calleeDescriptor, line);
     }
 
     @AfterEach

@@ -117,6 +117,7 @@ public final class StatusCommand implements Callable<Integer> {
         return switch (CallgraphRepository.publicationStatus(boundary.require(boundary.resolvedPaths().callgraphBundle(value)))) {
             case ABSENT -> "absent";
             case PUBLISHED -> "present";
+            case OUTDATED -> "outdated";
             case CORRUPT -> "corrupt";
         };
     }

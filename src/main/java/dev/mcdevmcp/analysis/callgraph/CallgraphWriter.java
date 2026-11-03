@@ -3,6 +3,7 @@ package dev.mcdevmcp.analysis.callgraph;
 import dev.mcdevmcp.storage.bundle.BundleHashes;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleWriter;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
+import dev.mcdevmcp.storage.callgraph.CallgraphEdgeKind;
 
 import java.util.Objects;
 
@@ -24,6 +25,7 @@ final class CallgraphWriter {
         String remappedJarSha256 = BundleHashes.sha256(request.remappedJar(), request.cancellation());
         try (var bundle = new CallgraphBundleWriter(request.outputBundle(), request.minecraftVersion(), remappedJarSha256, request.cancellation())) {
             long nextEdgeId = 1;
+            long fieldAccesses = 0;
             int classes = 0;
             int methods = 0;
             InvocationExtractor.Extraction extraction;
@@ -39,14 +41,18 @@ final class CallgraphWriter {
                         throw new IllegalArgumentException("Non-sequential encounter order for " + extraction.className() + ": expected " + expectedLocalOrder + ", found " + edge.encounterOrder());
                     }
                     long edgeId = Math.addExact(firstEdgeId, edge.encounterOrder());
-                    bundle.accept(new CallgraphDataRecord(edgeId, edge.callerClass(), edge.callerMethod(), edge.callerDescriptor(), edge.calleeClass(), edge.calleeMethod(), edge.calleeDescriptor(), edge.lineNumber()));
+                    bundle.accept(new CallgraphDataRecord(edgeId, edge.kind(), edge.callerClass(), edge.callerMethod(), edge.callerDescriptor(), edge.calleeClass(), edge.calleeMethod(), edge.calleeDescriptor(), edge.lineNumber()));
+                    if (edge.kind() != CallgraphEdgeKind.CALL) {
+                        fieldAccesses++;
+                    }
                     expectedLocalOrder++;
                 }
                 nextEdgeId = Math.addExact(firstEdgeId, expectedLocalOrder);
             }
-            Counts counts = new Counts(classes, methods, nextEdgeId - 1);
+            long records = nextEdgeId - 1;
+            Counts counts = new Counts(classes, methods, records - fieldAccesses, fieldAccesses);
             beforePublication.run();
-            bundle.publish(counts.classes(), counts.methods(), counts.edges());
+            bundle.publish(counts.classes(), counts.methods(), records);
             return counts;
         }
     }
@@ -60,6 +66,6 @@ final class CallgraphWriter {
         void run() throws Exception;
     }
 
-    value record Counts(int classes, int methods, long edges) {
+    value record Counts(int classes, int methods, long edges, long fieldAccesses) {
     }
 }

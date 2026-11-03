@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -55,8 +56,17 @@ public final class CallgraphBundleValidator {
 
     static void validateGeneration(Path root, Path generation, String identity, CallgraphManifest manifest, Cancellation cancellation) throws IOException, InterruptedException {
         validateArtifacts(root, generation, identity, manifest, cancellation);
-        validateDirection(generation, manifest, CallgraphDirection.CALLERS, cancellation);
-        validateDirection(generation, manifest, CallgraphDirection.CALLEES, cancellation);
+        var rows = new EnumMap<CallgraphEdgeKind, Long>(CallgraphEdgeKind.class);
+        for (CallgraphDirection direction : CallgraphDirection.values()) {
+            long dataRows = validateDirection(generation, manifest, direction, cancellation);
+            Long previous = rows.putIfAbsent(direction.kind(), dataRows);
+            if (previous != null && previous != dataRows) {
+                throw new IOException("Callgraph directions of one edge kind hold different record counts");
+            }
+        }
+        if (rows.get(CallgraphEdgeKind.CALL) != manifest.edgeCount() || add(rows.get(CallgraphEdgeKind.READ), rows.get(CallgraphEdgeKind.WRITE), "Callgraph field access count overflow") != manifest.fieldAccessCount()) {
+            throw new IOException("Callgraph manifest edge counts do not match validated JSONL records");
+        }
     }
 
     private static void validateArtifacts(Path root, Path generation, String identity, CallgraphManifest manifest, Cancellation cancellation) throws IOException, InterruptedException {
@@ -101,7 +111,7 @@ public final class CallgraphBundleValidator {
         return new CallgraphFileMetadata(artifact, Files.size(file), records, BundleHashes.sha256(file, cancellation));
     }
 
-    private static void validateDirection(Path generation, CallgraphManifest manifest, CallgraphDirection direction, Cancellation cancellation) throws IOException, InterruptedException {
+    private static long validateDirection(Path generation, CallgraphManifest manifest, CallgraphDirection direction, Cancellation cancellation) throws IOException, InterruptedException {
         CallgraphFileMetadata dataMetadata = CallgraphBundleLayout.metadata(manifest, direction.dataArtifact());
         CallgraphFileMetadata indexMetadata = CallgraphBundleLayout.metadata(manifest, direction.indexArtifact());
         Path data = direction.dataArtifact().resolve(generation);
@@ -136,6 +146,9 @@ public final class CallgraphBundleValidator {
                         throw new IOException("Callgraph data ended inside index range " + key);
                     }
                     CallgraphDataRecord record = parse(dataLine, CallgraphDataRecord.class, direction.dataFileName());
+                    if (!direction.holds(record)) {
+                        throw new IOException("Callgraph data holds a " + record.kind() + " edge in " + direction.dataFileName());
+                    }
                     if (!direction.lookupKey(record).equals(key)) {
                         throw new IOException("Callgraph data lookup key does not match index range " + key);
                     }
@@ -155,9 +168,10 @@ public final class CallgraphBundleValidator {
                 throw new IOException("Callgraph index does not cover the complete data artifact");
             }
         }
-        if (dataRows != dataMetadata.recordCount() || dataRows != manifest.edgeCount() || indexRows != indexMetadata.recordCount()) {
+        if (dataRows != dataMetadata.recordCount() || indexRows != indexMetadata.recordCount()) {
             throw new IOException("Callgraph manifest record counts do not match validated JSONL records");
         }
+        return dataRows;
     }
 
     private static void validateArtifact(Path root, Path file, CallgraphFileMetadata metadata, Cancellation cancellation) throws IOException, InterruptedException {

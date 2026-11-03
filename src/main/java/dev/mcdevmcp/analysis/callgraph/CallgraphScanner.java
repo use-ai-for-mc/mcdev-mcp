@@ -110,8 +110,8 @@ public final class CallgraphScanner {
                 throw failure;
             }
             Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
-            request.progress().report("callgraph", 100, "Recorded " + counts.edges() + " call edges");
-            return new CallgraphSummary(counts.classes(), counts.methods(), counts.edges(), elapsed);
+            request.progress().report("callgraph", 100, "Recorded " + counts.edges() + " call edges and " + counts.fieldAccesses() + " field accesses");
+            return new CallgraphSummary(counts.classes(), counts.methods(), counts.edges(), counts.fieldAccesses(), elapsed);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IOException("Callgraph scan cancelled", exception);

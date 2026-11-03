@@ -6,6 +6,7 @@ import dev.mcdevmcp.mcp.tool.api.ToolResult;
 import dev.mcdevmcp.storage.PlatformPaths;
 import dev.mcdevmcp.storage.callgraph.CallgraphBundleTestSupport;
 import dev.mcdevmcp.storage.callgraph.CallgraphDataRecord;
+import dev.mcdevmcp.storage.callgraph.CallgraphEdgeKind;
 import dev.mcdevmcp.storage.model.MinecraftVersion;
 import dev.mcdevmcp.storage.symbols.SymbolIndexData;
 import dev.mcdevmcp.storage.symbols.SymbolIndexFixture;
@@ -58,7 +59,7 @@ class MemberTypeToolsTest {
     }
 
     private static CallgraphDataRecord edge(long id, String callerClass, String calleeClass, String calleeMethod) {
-        return new CallgraphDataRecord(id, callerClass, "run", "()V", calleeClass, calleeMethod, "()V", (int) id);
+        return new CallgraphDataRecord(id, CallgraphEdgeKind.CALL, callerClass, "run", "()V", calleeClass, calleeMethod, "()V", (int) id);
     }
 
     @BeforeEach
@@ -176,6 +177,32 @@ class MemberTypeToolsTest {
                              public void draw() { }
                              record Deep(int value) { }
                          }""", text("mc_get_method", Map.of("className", "alpha.Outer.Inner", "methodName", "Inner")));
+    }
+
+    @Test
+    void showsOnlyTheRequestedLinesOfTheOverloadsTheyCover() {
+        assertEquals("""
+                     // 2 methods of alpha.Outer are named draw; the requested lines cover 1 of them
+
+                     // Method: alpha.Outer#draw
+                     // Signature: void draw(int count)
+                     // Modifiers: public
+                     // Lines: 5-5 (showing 5-5)
+
+                     // Class extends: java.lang.Object
+
+                         public void draw(int count) { }""", text("mc_get_method", Map.of("className", "alpha.Outer", "methodName", "draw", "fromLine", 5)));
+        assertEquals("""
+                     // Method: alpha.Outer$Inner#<init>
+                     // Signature: Inner()
+                     // Modifiers: public
+                     // Lines: 7-7 (showing 7-7)
+
+                     // Class extends: alpha.Outer
+
+                             Inner() { super(0); }""", text("mc_get_method", Map.of("className", "alpha.Outer$Inner", "methodName", "Inner", "fromLine", 1, "toLine", 7)));
+        assertEquals("No lines of alpha.Outer#draw fall in 6-end; its lines are 4-4, 5-5", text("mc_get_method", Map.of("className", "alpha.Outer", "methodName", "draw", "fromLine", 6)));
+        assertEquals("Error executing mc_get_method: 'fromLine' must not be after 'toLine'", text("mc_get_method", Map.of("className", "alpha.Outer", "methodName", "draw", "fromLine", 5, "toLine", 4)));
     }
 
     @Test

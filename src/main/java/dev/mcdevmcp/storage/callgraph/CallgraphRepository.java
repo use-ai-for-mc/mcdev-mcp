@@ -60,6 +60,8 @@ public final class CallgraphRepository {
         try {
             CallgraphBundleValidator.validateArtifacts(root);
             return PublicationStatus.PUBLISHED;
+        } catch (OutdatedCallgraphException _) {
+            return PublicationStatus.OUTDATED;
         } catch (IOException | RuntimeException exception) {
             return PublicationStatus.CORRUPT;
         }
@@ -87,6 +89,21 @@ public final class CallgraphRepository {
 
     public List<MethodReference> callees(String className, String methodName, int limitPlusOne) throws IOException {
         return references(className, methodName, limitPlusOne, CallgraphDirection.CALLEES);
+    }
+
+    /**
+     * The methods that read the field, found by the class their bytecode names as its owner: the class the
+     * field was accessed through, which may be a subclass of the one declaring it.
+     */
+    public List<MethodReference> readers(String className, String fieldName, int limitPlusOne) throws IOException {
+        return references(className, fieldName, limitPlusOne, CallgraphDirection.READERS);
+    }
+
+    /**
+     * The methods that write the field, found as {@link #readers} are.
+     */
+    public List<MethodReference> writers(String className, String fieldName, int limitPlusOne) throws IOException {
+        return references(className, fieldName, limitPlusOne, CallgraphDirection.WRITERS);
     }
 
     private List<MethodReference> references(String className, String methodName, int limitPlusOne, CallgraphDirection direction) throws IOException {
@@ -166,16 +183,19 @@ public final class CallgraphRepository {
         return List.copyOf(references);
     }
 
+    /**
+     * Whether a version has callgraph data to read: OUTDATED is data an earlier mcdev-mcp wrote in a schema
+     * this one no longer reads.
+     */
     public enum PublicationStatus {
-        ABSENT, PUBLISHED, CORRUPT
+        ABSENT, PUBLISHED, OUTDATED, CORRUPT
     }
 
     private final class GenerationCache {
         private final String identity;
         private final Path path;
         private final CallgraphManifest manifest;
-        private volatile NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> callers;
-        private volatile NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> callees;
+        private final Map<CallgraphDirection, NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord>> indexes = new EnumMap<>(CallgraphDirection.class);
 
         private GenerationCache(String identity, Path path, CallgraphManifest manifest) {
             this.identity = identity;
@@ -195,24 +215,13 @@ public final class CallgraphRepository {
             return manifest;
         }
 
-        private NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> index(CallgraphDirection direction) throws IOException {
-            NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> current = direction == CallgraphDirection.CALLERS ? callers : callees;
-            if (current != null) {
-                return current;
+        private synchronized NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> index(CallgraphDirection direction) throws IOException {
+            NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> current = indexes.get(direction);
+            if (current == null) {
+                current = loadIndex(direction);
+                indexes.put(direction, current);
             }
-            synchronized (this) {
-                current = direction == CallgraphDirection.CALLERS ? callers : callees;
-                if (current == null) {
-                    current = loadIndex(direction);
-                    if (direction == CallgraphDirection.CALLERS) {
-                        callers = current;
-                    }
-                    else {
-                        callees = current;
-                    }
-                }
-                return current;
-            }
+            return current;
         }
 
         private NavigableMap<CallgraphDirection.LookupKey, CallgraphIndexRecord> loadIndex(CallgraphDirection direction) throws IOException {

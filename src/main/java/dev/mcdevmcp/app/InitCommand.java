@@ -42,7 +42,7 @@ public final class InitCommand implements Callable<Integer> {
         if (!skipCallgraph) {
             try {
                 var callgraph = operations.rebuildCallgraph(minecraft, progress, Cancellation.none());
-                spec.commandLine().getOut().printf("Recorded %d call edges.%n", callgraph.edges());
+                spec.commandLine().getOut().printf("Recorded %d call edges and %d field accesses.%n", callgraph.edges(), callgraph.fieldAccesses());
             } catch (RuntimeException failure) {
                 throw new IllegalStateException("Source/index committed; callgraph failed: " + failure.getMessage(), failure);
             }

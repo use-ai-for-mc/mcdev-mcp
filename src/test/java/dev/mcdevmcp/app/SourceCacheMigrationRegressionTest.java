@@ -142,7 +142,7 @@ final class SourceCacheMigrationRegressionTest {
             Files.writeString(fixture.paths().symbolIndex(VERSION), "historical existence sentinel");
             CliResult indexed = execute(fixture, "callgraph", "-v", VERSION.value());
             assertEquals(0, indexed.exitCode(), indexed.stderr());
-            assertTrue(indexed.stdout().contains("Recorded 1 call edges."), indexed.stdout());
+            assertTrue(indexed.stdout().contains("Recorded 1 call edges and 0 field accesses."), indexed.stdout());
             assertEquals("", indexed.stderr());
             assertTrue(Files.exists(fixture.paths().callgraphBundle(VERSION).resolve("current.json")));
             assertEquals("historical existence sentinel", Files.readString(fixture.paths().symbolIndex(VERSION)));

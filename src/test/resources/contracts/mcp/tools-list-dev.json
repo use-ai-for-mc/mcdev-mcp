@@ -94,7 +94,7 @@
       },
       {
         "name": "mc_get_method",
-        "description": "Get the source code for a specific method in a class, with surrounding context. Useful for understanding method implementation details.",
+        "description": "Get the source code for a specific method in a class, with surrounding context, or a range of its lines. Useful for understanding method implementation details.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -105,6 +105,16 @@
             "methodName": {
               "type": "string",
               "description": "Method name (e.g., \"tick\", \"render\", \"onUse\")"
+            },
+            "fromLine": {
+              "type": "integer",
+              "description": "Optional: first line to return, numbered as in the method's \"// Lines:\" header. With fromLine or toLine, only the method's lines in that range are returned, without surrounding context; use it to read a long method in parts.",
+              "minimum": 1
+            },
+            "toLine": {
+              "type": "integer",
+              "description": "Optional: last line to return, numbered as in the method's \"// Lines:\" header.",
+              "minimum": 1
             },
             "version": {
               "type": "string",
@@ -120,7 +130,7 @@
       },
       {
         "name": "mc_find_refs",
-        "description": "Find callers (who calls this method) or callees (what this method calls) using the callgraph database. Useful for understanding code dependencies.\n\nResults are capped (default 100, max 5000). Pass `limit` to widen.",
+        "description": "Find callers (who calls this method) or callees (what this method calls) using the callgraph database, or the readers and writers of a field. Useful for understanding code dependencies.\n\nResults are capped (default 100, max 5000). Pass `limit` to widen.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -130,15 +140,17 @@
             },
             "methodName": {
               "type": "string",
-              "description": "Method name to find references for"
+              "description": "Method name to find references for, or the field name for readers and writers"
             },
             "direction": {
               "type": "string",
               "enum": [
                 "callers",
-                "callees"
+                "callees",
+                "readers",
+                "writers"
               ],
-              "description": "callers = who calls this method, callees = what this method calls"
+              "description": "callers = who calls this method, callees = what this method calls, readers = who reads this field, writers = who writes it"
             },
             "limit": {
               "type": "integer",

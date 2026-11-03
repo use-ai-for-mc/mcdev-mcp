@@ -34,11 +34,11 @@ class CallgraphScannerIntegrationTest {
     }
 
     private static CallEdge call(String callerClass, String callerMethod, String calleeMethod, long encounterOrder) {
-        return new CallEdge(callerClass, callerMethod, "()V", "target.Target", calleeMethod, "()V", null, encounterOrder);
+        return new CallEdge(CallgraphEdgeKind.CALL, callerClass, callerMethod, "()V", "target.Target", calleeMethod, "()V", null, encounterOrder);
     }
 
     private static void createPrior(Path bundle) throws Exception {
-        CallgraphBundleTestSupport.publish(bundle, VERSION, List.of(new CallgraphDataRecord(1, "prior.Caller", "run", null, "prior.Target", "hit", "", -7)));
+        CallgraphBundleTestSupport.publish(bundle, VERSION, List.of(new CallgraphDataRecord(1, CallgraphEdgeKind.CALL, "prior.Caller", "run", null, "prior.Target", "hit", "", -7)));
     }
 
     private static void writeEntry(JarOutputStream output, String name, byte[] bytes) throws IOException {
@@ -112,7 +112,9 @@ class CallgraphScannerIntegrationTest {
         assertEquals(serialSummary.classes(), parallelSummary.classes());
         assertEquals(serialSummary.methods(), parallelSummary.methods());
         assertEquals(serialSummary.edges(), parallelSummary.edges());
+        assertEquals(serialSummary.fieldAccesses(), parallelSummary.fieldAccesses());
         assertTrue(serialSummary.edges() > 0);
+        assertTrue(serialSummary.fieldAccesses() > 0);
         assertEquals(snapshot(serial), snapshot(parallel));
         CallgraphBundleValidator.validate(serial);
         CallgraphBundleValidator.validate(parallel);
@@ -213,10 +215,38 @@ class CallgraphScannerIntegrationTest {
 
         CallgraphWriter.Counts counts = new CallgraphWriter().write(request(jar, bundle, 1, Cancellation.none()), batches::pollFirst);
 
-        assertEquals(new CallgraphWriter.Counts(2, 2, 3), counts);
+        assertEquals(new CallgraphWriter.Counts(2, 2, 3, 0), counts);
         var repository = new CallgraphRepository(bundle);
         assertEquals(List.of(1L, 2L), repository.callees("alpha.First", "one", 10).stream().map(MethodReference::edgeId).toList());
         assertEquals(List.of(3L), repository.callees("beta.Second", "two", 10).stream().map(MethodReference::edgeId).toList());
+    }
+
+    @Test
+    void recordsFieldAccessesInTheirOwnDirectionsWithIdsSharedWithCalls() throws Exception {
+        Path bundle = temporaryDirectory.resolve("field-accesses/callgraph");
+        Path jar = temporaryDirectory.resolve("fields.jar");
+        Files.write(jar, new byte[0]);
+        var read = new CallEdge(CallgraphEdgeKind.READ, "alpha.First", "one", "()V", "target.Target", "value", "I", 3, 1);
+        var write = new CallEdge(CallgraphEdgeKind.WRITE, "alpha.First", "one", "()V", "target.Target", "value", "I", 4, 2);
+        var batches = new ArrayDeque<>(List.of(new InvocationExtractor.Extraction("alpha.First", 1, List.of(call("alpha.First", "one", "first", 0), read, write))));
+
+        CallgraphWriter.Counts counts = new CallgraphWriter().write(request(jar, bundle, 1, Cancellation.none()), batches::pollFirst);
+
+        assertEquals(new CallgraphWriter.Counts(1, 1, 1, 2), counts);
+        var repository = new CallgraphRepository(bundle);
+        assertEquals(List.of(1L), repository.callees("alpha.First", "one", 10).stream().map(MethodReference::edgeId).toList());
+        assertEquals(List.of(2L), repository.readers("target.Target", "value", 10).stream().map(MethodReference::edgeId).toList());
+        assertEquals(List.of(3L), repository.writers("target.Target", "value", 10).stream().map(MethodReference::edgeId).toList());
+        assertEquals("alpha.First.one()V", repository.readers("target.Target", "value", 10).getFirst().displayName());
+        assertTrue(repository.callers("target.Target", "value", 10).isEmpty());
+        CallgraphBundleValidator.validate(bundle);
+    }
+
+    @Test
+    void rejectsAFieldEdgeWhoseDescriptorIsNotAFieldType() {
+        assertThrows(IllegalArgumentException.class, () -> new CallEdge(CallgraphEdgeKind.READ, "alpha.First", "one", "()V", "target.Target", "value", "()V", 3, 0));
+        assertThrows(IllegalArgumentException.class, () -> new CallEdge(CallgraphEdgeKind.WRITE, "alpha.First", "one", "()V", "target.Target", "value", "V", 3, 0));
+        assertThrows(IllegalArgumentException.class, () -> new CallEdge(CallgraphEdgeKind.CALL, "alpha.First", "one", "()V", "target.Target", "value", "I", 3, 0));
     }
 
     @Test

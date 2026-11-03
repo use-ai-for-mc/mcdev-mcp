@@ -53,6 +53,9 @@ final class McVersionTool {
             if (status == CallgraphRepository.PublicationStatus.CORRUPT) {
                 return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: corrupt\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  " + AppVersion.commandLine() + " init -v " + version.value());
             }
+            if (status == CallgraphRepository.PublicationStatus.OUTDATED) {
+                return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: needs rebuild\n\n" + "It was built by an earlier mcdev-mcp. STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " callgraph -v " + version.value());
+            }
             String callgraph = status == CallgraphRepository.PublicationStatus.PUBLISHED ? "yes" : "no";
             return ToolResult.text("Active version set to " + version.value() + ".\nIndexed: yes\nCallgraph: " + callgraph);
         }
@@ -79,6 +82,7 @@ final class McVersionTool {
                 String callgraph = switch (status) {
                     case PUBLISHED -> "callgraph";
                     case ABSENT -> "no callgraph";
+                    case OUTDATED -> "callgraph needs rebuild";
                     case CORRUPT -> "corrupt callgraph";
                 };
                 lines.add(version.value() + ": " + decompiled + ", " + indexed + ", " + callgraph);

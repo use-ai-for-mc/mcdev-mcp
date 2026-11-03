@@ -24,6 +24,7 @@ final class McFindRefsTool {
     static final LimitSpec LIMIT = new LimitSpec(100, 5000);
     private static final int MAX_CAUSE_LENGTH = 500;
     private static final int COUNTED_CALLERS = 100;
+    private static final int MAX_INHERITING_TYPES = 5000;
 
     private McFindRefsTool() {
     }
@@ -42,6 +43,9 @@ final class McFindRefsTool {
                 if (publicationStatus == CallgraphRepository.PublicationStatus.ABSENT) {
                     return ToolResult.text("Version " + version.value() + " does not have callgraph data.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " callgraph -v " + version.value() + "\n\n" + "Or for full reinitialization:\n  " + AppVersion.commandLine() + " init -v " + version.value());
                 }
+                if (publicationStatus == CallgraphRepository.PublicationStatus.OUTDATED) {
+                    return ToolResult.text("Version " + version.value() + " has callgraph data from an earlier mcdev-mcp, which this one cannot read.\n\n" + "STOP and ask the USER to run this command in their terminal:\n" + "  " + AppVersion.commandLine() + " callgraph -v " + version.value());
+                }
                 var limit = LIMIT.normalize(arguments.limit());
                 int queryLimit = limit.value() + 1;
                 SymbolRepository symbols = support.repository(lease);
@@ -51,8 +55,15 @@ final class McFindRefsTool {
                 List<MethodReference> fetched;
                 String note;
                 try {
-                    fetched = arguments.direction() == ReferenceDirection.callers ? callgraph.callers(owner, methodName, queryLimit) : callgraph.callees(owner, methodName, queryLimit);
-                    note = type == null ? StaticToolSupport.similarClasses(symbols, className) : declarationNote(symbols, callgraph, type, methodName, arguments.direction());
+                    if (arguments.direction().field()) {
+                        FieldReferences references = fieldReferences(symbols, callgraph, type, owner, methodName, arguments.direction(), queryLimit);
+                        fetched = references.references();
+                        note = type == null ? StaticToolSupport.similarClasses(symbols, className) : fieldNote(symbols, type, methodName, references.inheritingOwners());
+                    }
+                    else {
+                        fetched = arguments.direction() == ReferenceDirection.callers ? callgraph.callers(owner, methodName, queryLimit) : callgraph.callees(owner, methodName, queryLimit);
+                        note = type == null ? StaticToolSupport.similarClasses(symbols, className) : declarationNote(symbols, callgraph, type, methodName, arguments.direction());
+                    }
                 } catch (IOException | RuntimeException exception) {
                     return ToolResult.error("Failed to query callgraph for " + className + "#" + methodName + " (" + direction + "): " + boundedCause(exception));
                 }
@@ -92,6 +103,79 @@ final class McFindRefsTool {
     }
 
     /**
+     * The field's readers or writers. Bytecode names a field by the class it was accessed through, so an
+     * access from a subclass, or through a subclass-typed reference, is recorded under that subclass; the
+     * subclasses that inherit the field are searched too, and those that declare their own field of that
+     * name are not.
+     */
+    private static FieldReferences fieldReferences(SymbolRepository symbols, CallgraphRepository callgraph, ClassSymbol type, String owner, String fieldName, ReferenceDirection direction, int queryLimit) throws IOException {
+        List<String> owners = new ArrayList<>(List.of(owner));
+        if (type != null) {
+            owners.addAll(inheritingTypes(symbols, type, fieldName));
+        }
+        List<MethodReference> references = new ArrayList<>();
+        int inheritingOwners = 0;
+        for (String current : owners) {
+            int remaining = queryLimit - references.size();
+            if (remaining < 1) {
+                break;
+            }
+            List<MethodReference> found = direction == ReferenceDirection.readers ? callgraph.readers(current, fieldName, remaining) : callgraph.writers(current, fieldName, remaining);
+            if (!found.isEmpty() && !current.equals(owner)) {
+                inheritingOwners++;
+            }
+            references.addAll(found);
+        }
+        return new FieldReferences(List.copyOf(references), inheritingOwners);
+    }
+
+    /**
+     * The subtypes that inherit the type's field of that name, nearest first, without those that hide it
+     * with a field of their own and their subtypes.
+     */
+    private static List<String> inheritingTypes(SymbolRepository symbols, ClassSymbol type, String fieldName) throws IOException {
+        Set<String> seen = new LinkedHashSet<>(List.of(type.binaryName()));
+        Deque<ClassSymbol> pending = new ArrayDeque<>(List.of(type));
+        while (!pending.isEmpty() && seen.size() <= MAX_INHERITING_TYPES) {
+            ClassSymbol current = pending.removeFirst();
+            List<ClassSymbol> direct = new ArrayList<>(symbols.hierarchy(current.binaryName(), true, MAX_INHERITING_TYPES));
+            direct.addAll(symbols.hierarchy(current.binaryName(), false, MAX_INHERITING_TYPES));
+            for (ClassSymbol subtype : direct) {
+                if (!declaresField(symbols, subtype, fieldName) && seen.add(subtype.binaryName())) {
+                    pending.addLast(subtype);
+                }
+            }
+        }
+        seen.remove(type.binaryName());
+        return List.copyOf(seen);
+    }
+
+    private static boolean declaresField(SymbolRepository symbols, ClassSymbol type, String fieldName) throws IOException {
+        return symbols.fields(type.id()).stream().anyMatch(field -> field.name().equals(fieldName));
+    }
+
+    /**
+     * What the symbol index adds to a field's accesses: that the class declares no such field, and how many
+     * subclasses the accesses were recorded under.
+     */
+    private static String fieldNote(SymbolRepository symbols, ClassSymbol type, String fieldName, int inheritingOwners) throws IOException {
+        String missing = "";
+        if (!declaresField(symbols, type, fieldName)) {
+            String declaring = null;
+            for (String supertype : supertypes(symbols, type)) {
+                ClassSymbol indexed = symbols.classByName(supertype);
+                if (indexed != null && declaresField(symbols, indexed, fieldName)) {
+                    declaring = supertype;
+                    break;
+                }
+            }
+            missing = "\n" + type.binaryName() + " declares no field named " + fieldName + (declaring == null ? "." : "; it inherits " + declaring + "#" + fieldName + ". Query " + declaring + " to see the accesses through every type.");
+        }
+        String inherited = inheritingOwners == 0 ? "" : "\nIncludes accesses recorded under " + inheritingOwners + (inheritingOwners == 1 ? " subtype that inherits" : " subtypes that inherit") + " the field.";
+        return missing + inherited;
+    }
+
+    /**
      * Every supertype reachable from the type, nearest first. An unindexed supertype is named but not followed.
      */
     private static List<String> supertypes(SymbolRepository symbols, ClassSymbol type) throws IOException {
@@ -117,6 +201,9 @@ final class McFindRefsTool {
     private static String render(MethodReference reference) {
         Integer line = reference.lineNumber();
         return reference.displayName() + (line == null || line == 0 ? "" : " (line " + line + ")");
+    }
+
+    private value record FieldReferences(List<MethodReference> references, int inheritingOwners) {
     }
 
     private static String boundedCause(Exception exception) {

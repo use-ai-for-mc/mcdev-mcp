@@ -72,6 +72,15 @@ class InvocationExtractorTest {
     }
 
     @Test
+    void extractsFieldReadsAndWritesUnderTheClassTheyWereAccessedThrough() throws Exception {
+        var fixture = CallgraphTestSupport.compile(temporaryDirectory);
+        List<CallEdge> edges = new InvocationExtractor().extract(fixture.bytes("callgraph.fixture.Fixture")).edges().stream().filter(edge -> edge.callerMethod().equals("fields")).toList();
+
+        assertEquals(List.of("WRITE callgraph.fixture.Fixture.inherited I", "WRITE callgraph.fixture.Target.shared Lcallgraph/fixture/Target;", "READ callgraph.fixture.Target.count I", "READ callgraph.fixture.Fixture.inherited I"), edges.stream().map(edge -> edge.kind() + " " + edge.calleeClass() + "." + edge.calleeMethod() + " " + edge.calleeDescriptor()).toList());
+        assertTrue(edges.stream().allMatch(edge -> edge.lineNumber() != null && edge.lineNumber() > 0));
+    }
+
+    @Test
     void emitsNullLinesWhenTheClassHasNoLineNumberTable() throws Exception {
         var fixture = CallgraphTestSupport.compile(temporaryDirectory);
         List<CallEdge> edges = new InvocationExtractor().extract(fixture.bytes("callgraph.fixture.NoLines")).edges();
